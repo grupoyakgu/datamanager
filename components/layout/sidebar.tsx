@@ -2,7 +2,7 @@
 
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import {
   HomeIcon,
   FileTextIcon,
@@ -13,104 +13,120 @@ import {
   SettingsIcon,
   MenuIcon,
   XIcon,
+  ChevronsLeft,
+  ChevronsRight,
 } from 'lucide-react';
+import { useUser } from '@/hooks/use-user';
+import { useT } from '@/lib/i18n/context';
+import { cn } from '@/lib/utils';
 
 const menuItems = [
-  { href: '/dashboard', label: 'Dashboard', icon: HomeIcon },
-  { href: '/summaries', label: 'Summaries', icon: FileTextIcon },
-  { href: '/files', label: 'Files', icon: FolderIcon },
-  { href: '/tags', label: 'Tags', icon: TagIcon },
-  { href: '/people', label: 'People', icon: UsersIcon },
-  { href: '/favorites', label: 'Favorites', icon: StarIcon },
-];
-
-const adminItems = [
-  { href: '/admin', label: 'Admin', icon: SettingsIcon },
+  { href: '/dashboard', key: 'nav.dashboard', icon: HomeIcon },
+  { href: '/summaries', key: 'nav.summaries', icon: FileTextIcon },
+  { href: '/files', key: 'nav.files', icon: FolderIcon },
+  { href: '/tags', key: 'nav.tags', icon: TagIcon },
+  { href: '/people', key: 'nav.people', icon: UsersIcon },
+  { href: '/favorites', key: 'nav.favorites', icon: StarIcon },
 ];
 
 export function Sidebar() {
   const pathname = usePathname();
-  const [isOpen, setIsOpen] = useState(true);
+  const { user } = useUser();
+  const t = useT();
+  const [collapsed, setCollapsed] = useState(false);
+  const [mobileOpen, setMobileOpen] = useState(false);
+  const [hydrated, setHydrated] = useState(false);
 
-  const isActive = (href: string) => pathname === href;
+  // Read the persisted preference after mount so server and client markup match.
+  useEffect(() => {
+    let stored = false;
+    try {
+      stored = localStorage.getItem('sidebar-collapsed') === '1';
+    } catch {
+      /* ignore */
+    }
+    const frame = requestAnimationFrame(() => {
+      setCollapsed(stored);
+      setHydrated(true);
+    });
+    return () => cancelAnimationFrame(frame);
+  }, []);
+
+  const toggleCollapsed = () => {
+    setCollapsed((c) => {
+      try {
+        localStorage.setItem('sidebar-collapsed', c ? '0' : '1');
+      } catch {
+        /* ignore */
+      }
+      return !c;
+    });
+  };
+
+  const items = user?.role === 'admin' ? [...menuItems, { href: '/admin', key: 'nav.admin', icon: SettingsIcon }] : menuItems;
+
+  const nav = (
+    <nav className="flex-1 overflow-y-auto py-3 px-2 space-y-1">
+      {items.map((item) => {
+        const Icon = item.icon;
+        const active = pathname === item.href || pathname.startsWith(`${item.href}/`);
+        return (
+          <Link
+            key={item.href}
+            href={item.href}
+            title={t(item.key)}
+            onClick={() => setMobileOpen(false)}
+            className={cn(
+              'flex items-center gap-3 rounded-md px-3 py-2 text-sm transition-colors',
+              active ? 'bg-primary text-primary-foreground' : 'text-foreground hover:bg-accent',
+              collapsed && 'justify-center px-2'
+            )}
+          >
+            <Icon size={18} className="shrink-0" />
+            {!collapsed && <span className="truncate">{t(item.key)}</span>}
+          </Link>
+        );
+      })}
+    </nav>
+  );
 
   return (
     <>
-      {/* Mobile toggle */}
       <button
-        onClick={() => setIsOpen(!isOpen)}
-        className="md:hidden fixed top-4 left-4 z-50 p-2 hover:bg-accent rounded-lg"
+        type="button"
+        onClick={() => setMobileOpen((o) => !o)}
+        className="md:hidden fixed top-3 left-3 z-50 p-2 rounded-md bg-card border shadow-sm"
+        aria-label="Menu"
       >
-        {isOpen ? <XIcon size={24} /> : <MenuIcon size={24} />}
+        {mobileOpen ? <XIcon size={20} /> : <MenuIcon size={20} />}
       </button>
 
-      {/* Sidebar */}
       <aside
-        className={`${
-          isOpen ? 'w-64' : 'w-20'
-        } bg-card border-r border-border transition-all duration-300 flex flex-col h-screen fixed left-0 top-0 z-40 md:relative md:z-auto`}
+        className={cn(
+          'bg-card border-r border-border flex flex-col h-screen z-40',
+          hydrated && 'transition-all duration-200',
+          'fixed left-0 top-0 md:relative',
+          collapsed ? 'md:w-16' : 'md:w-60',
+          mobileOpen ? 'w-60 translate-x-0' : '-translate-x-full md:translate-x-0'
+        )}
       >
-        {/* Logo */}
-        <div className="p-4 border-b border-border">
-          <div className={`font-bold text-lg ${isOpen ? 'block' : 'hidden md:block'}`}>
-            {isOpen ? 'Yakgu Data Manager' : 'Y'}
-          </div>
+        <div className={cn('h-14 flex items-center border-b border-border px-4', collapsed && 'justify-center px-2')}>
+          <Link href="/dashboard" className="font-semibold tracking-tight truncate">
+            {collapsed ? 'Y' : 'YAKGU'}
+          </Link>
         </div>
-
-        {/* Navigation */}
-        <nav className="flex-1 overflow-y-auto py-4">
-          <div className="space-y-2">
-            {menuItems.map((item) => {
-              const Icon = item.icon;
-              const active = isActive(item.href);
-              return (
-                <Link
-                  key={item.href}
-                  href={item.href}
-                  className={`flex items-center gap-3 px-4 py-2 rounded-lg transition-colors ${
-                    active
-                      ? 'bg-primary text-primary-foreground'
-                      : 'hover:bg-accent text-foreground'
-                  }`}
-                >
-                  <Icon size={20} />
-                  {isOpen && <span>{item.label}</span>}
-                </Link>
-              );
-            })}
-          </div>
-
-          {/* Admin Section */}
-          <div className="mt-8 pt-4 border-t border-border">
-            {adminItems.map((item) => {
-              const Icon = item.icon;
-              const active = isActive(item.href);
-              return (
-                <Link
-                  key={item.href}
-                  href={item.href}
-                  className={`flex items-center gap-3 px-4 py-2 rounded-lg transition-colors ${
-                    active
-                      ? 'bg-primary text-primary-foreground'
-                      : 'hover:bg-accent text-foreground'
-                  }`}
-                >
-                  <Icon size={20} />
-                  {isOpen && <span>{item.label}</span>}
-                </Link>
-              );
-            })}
-          </div>
-        </nav>
+        {nav}
+        <button
+          type="button"
+          onClick={toggleCollapsed}
+          className="hidden md:flex items-center justify-center h-10 border-t border-border text-muted-foreground hover:text-foreground"
+          aria-label="Toggle sidebar"
+        >
+          {collapsed ? <ChevronsRight size={18} /> : <ChevronsLeft size={18} />}
+        </button>
       </aside>
 
-      {/* Mobile overlay */}
-      {isOpen && (
-        <div
-          className="fixed inset-0 bg-black bg-opacity-50 md:hidden z-30"
-          onClick={() => setIsOpen(false)}
-        />
-      )}
+      {mobileOpen && <div className="fixed inset-0 bg-black/40 md:hidden z-30" onClick={() => setMobileOpen(false)} />}
     </>
   );
 }
