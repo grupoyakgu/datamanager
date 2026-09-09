@@ -6,9 +6,7 @@
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "lint": "eslint",
-    "migrate": "node scripts/run-migrations.js",
-    "db:reset": "node scripts/reset-db.js"
+    "lint": "eslint"
   },
   "dependencies": {
     "@radix-ui/react-dropdown-menu": "2.1.24",
