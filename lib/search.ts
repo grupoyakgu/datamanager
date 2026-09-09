@@ -92,7 +92,7 @@ export async function searchSummaries(
   // Filter by participant
   if (filters?.participant) {
     results = results.filter((result) =>
-      result.participants.some((p) =>
+      result.participants.some((p: string) =>
         p.toLowerCase().includes(filters.participant!.toLowerCase())
       )
     );
