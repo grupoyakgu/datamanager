@@ -15,8 +15,8 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: 'YAKGU Knowledge Hub',
-  description: 'Centralized knowledge management for Grupo Yakgu',
+  title: 'Grupo Yakgu Data Manager',
+  description: 'Central data management platform for Grupo Yakgu',
 };
 
 export default function RootLayout({

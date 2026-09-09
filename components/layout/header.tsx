@@ -35,6 +35,7 @@ export function Header() {
             <DropdownMenuTrigger asChild>
               <Button variant="ghost" className="flex items-center gap-2">
                 {user?.avatar_url && (
+                  // eslint-disable-next-line @next/next/no-img-element
                   <img
                     src={user.avatar_url}
                     alt={user.name || 'User'}

@@ -9,6 +9,16 @@ export interface SearchResult {
   completenessScore: number;
 }
 
+interface SummaryRow {
+  id: string;
+  title: string;
+  content: string;
+  meeting_date: string | null;
+  completeness_score: number;
+  extracted_data: { participants: string[] }[] | null;
+  meeting_summary_tags: { tags: { id: string; name: string } }[] | null;
+}
+
 export async function searchSummaries(
   query: string,
   userId: string,
@@ -68,23 +78,22 @@ export async function searchSummaries(
     return [];
   }
 
-  let results =
-    (data as any[])?.map((summary) => ({
+  const rows = (data ?? []) as unknown as SummaryRow[];
+
+  let results = rows.map((summary) => ({
       id: summary.id,
       title: summary.title,
       summary: summary.content.substring(0, 200),
       meetingDate: summary.meeting_date,
       participants: summary.extracted_data?.[0]?.participants || [],
       completenessScore: summary.completeness_score,
-    })) || [];
+    }));
 
   // Filter by tags
   if (filters?.tags && filters.tags.length > 0) {
     results = results.filter((result) => {
-      const summaryData = data?.find((d) => d.id === result.id) as any;
-      const summaryTags = summaryData?.meeting_summary_tags?.map(
-        (t: any) => t.tags.id
-      ) || [];
+      const summaryData = rows.find((d) => d.id === result.id);
+      const summaryTags = summaryData?.meeting_summary_tags?.map((t) => t.tags.id) ?? [];
       return filters.tags?.some((tag) => summaryTags.includes(tag));
     });
   }
@@ -92,7 +101,7 @@ export async function searchSummaries(
   // Filter by participant
   if (filters?.participant) {
     results = results.filter((result) =>
-      result.participants.some((p) =>
+      result.participants.some((p: string) =>
         p.toLowerCase().includes(filters.participant!.toLowerCase())
       )
     );

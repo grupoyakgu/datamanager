@@ -3,10 +3,12 @@
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { useUser } from '@/hooks/use-user';
 import { useRouter } from 'next/navigation';
-import { useEffect, useState } from 'react';
+import { useEffect } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { Sidebar } from '@/components/layout/sidebar';
 import { Header } from '@/components/layout/header';
+import { apiFetch } from '@/lib/api-client';
+import type { MeetingSummary } from '@/types/database';
 
 export default function SummariesPage() {
   const { user, loading } = useUser();
@@ -18,11 +20,7 @@ export default function SummariesPage() {
     }
   }, [loading, user, router]);
 
-  const getSummaries = async () => {
-    const response = await fetch('/api/summaries');
-    if (!response.ok) throw new Error('Failed to fetch summaries');
-    return response.json();
-  };
+  const getSummaries = () => apiFetch<MeetingSummary[]>('/api/summaries');
 
   const { data: summaries, isLoading } = useQuery({
     queryKey: ['summaries'],
@@ -57,7 +55,7 @@ export default function SummariesPage() {
                 <div>Loading summaries...</div>
               ) : summaries && summaries.length > 0 ? (
                 <div className="grid gap-4">
-                  {summaries.map((summary: any) => (
+                  {summaries.map((summary) => (
                     <Card
                       key={summary.id}
                       className="cursor-pointer hover:shadow-lg transition-shadow"

@@ -5,6 +5,16 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { useUser } from '@/hooks/use-user';
 import { useRouter } from 'next/navigation';
 import { useEffect } from 'react';
+import { apiFetch } from '@/lib/api-client';
+
+interface DashboardStats {
+  newSummaries: number;
+  incompleteSummaries: number;
+  meetingsThisMonth: number;
+  openActionItems: number;
+  recentSummaries: { id: string; title: string; created_at: string }[];
+  missingSummaries: { id: string; title: string; completeness_score: number }[];
+}
 
 export default function DashboardPage() {
   const { user, loading } = useUser();
@@ -16,11 +26,7 @@ export default function DashboardPage() {
     }
   }, [loading, user, router]);
 
-  const getDashboardStats = async () => {
-    const response = await fetch('/api/dashboard/stats');
-    if (!response.ok) throw new Error('Failed to fetch stats');
-    return response.json();
-  };
+  const getDashboardStats = () => apiFetch<DashboardStats>('/api/dashboard/stats');
 
   const { data: stats } = useQuery({
     queryKey: ['dashboard-stats'],
@@ -40,7 +46,7 @@ export default function DashboardPage() {
     <div className="space-y-6">
       <div>
         <h1 className="text-3xl font-bold">Good {getGreeting()}, {user.name}</h1>
-        <p className="text-muted-foreground mt-1">Welcome to YAKGU Knowledge Hub</p>
+        <p className="text-muted-foreground mt-1">Welcome to the Grupo Yakgu Data Manager</p>
       </div>
 
       {/* Stats Cards */}
@@ -72,7 +78,7 @@ export default function DashboardPage() {
         <div>
           <h2 className="text-xl font-semibold mb-4">Recent Summaries</h2>
           <div className="space-y-3">
-            {stats?.recentSummaries?.map((summary: any) => (
+            {stats?.recentSummaries?.map((summary) => (
               <Card key={summary.id} className="cursor-pointer hover:bg-accent">
                 <CardContent className="pt-4">
                   <p className="font-medium">{summary.title}</p>
@@ -88,14 +94,14 @@ export default function DashboardPage() {
         <div>
           <h2 className="text-xl font-semibold mb-4">Missing Information</h2>
           <div className="space-y-3">
-            {stats?.missingSummaries?.map((summary: any) => (
+            {stats?.missingSummaries?.map((summary) => (
               <Card key={summary.id} className="cursor-pointer hover:bg-accent border-yellow-200">
                 <CardContent className="pt-4">
                   <div className="flex items-start justify-between">
                     <div>
                       <p className="font-medium">{summary.title}</p>
                       <p className="text-sm text-muted-foreground mt-1">
-                        {summary.completenessScore}% complete
+                        {summary.completeness_score}% complete
                       </p>
                     </div>
                     <span className="text-yellow-600 font-semibold">!</span>

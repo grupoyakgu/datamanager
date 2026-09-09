@@ -1,6 +1,7 @@
 'use client';
 
 import { useState } from 'react';
+import { useRouter } from 'next/navigation';
 import { supabase } from '@/lib/supabase';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
@@ -9,6 +10,8 @@ export default function LoginPage() {
   const [loading, setLoading] = useState(false);
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
+  const [error, setError] = useState<string | null>(null);
+  const router = useRouter();
 
   const handleGoogleSignIn = async () => {
     setLoading(true);
@@ -20,8 +23,22 @@ export default function LoginPage() {
         },
       });
       if (error) throw error;
-    } catch (error) {
-      console.error('Error signing in:', error);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Sign in failed');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleEmailSignIn = async () => {
+    setLoading(true);
+    setError(null);
+    try {
+      const { error } = await supabase.auth.signInWithPassword({ email, password });
+      if (error) throw error;
+      router.replace('/dashboard');
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Sign in failed');
     } finally {
       setLoading(false);
     }
@@ -32,12 +49,12 @@ export default function LoginPage() {
       <Card className="w-full max-w-md">
         <CardHeader className="space-y-2">
           <div className="text-center mb-4">
-            <h1 className="text-3xl font-bold">YAKGU</h1>
-            <p className="text-sm text-muted-foreground">Knowledge Hub</p>
+            <h1 className="text-3xl font-bold">Grupo Yakgu</h1>
+            <p className="text-sm text-muted-foreground">Data Manager</p>
           </div>
           <CardTitle>Welcome back</CardTitle>
           <CardDescription>
-            Sign in to access your meeting summaries and knowledge base
+            Sign in to access the Grupo Yakgu Data Manager
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
@@ -77,7 +94,7 @@ export default function LoginPage() {
               className="w-full px-4 py-2 border border-input rounded-lg focus:outline-none focus:ring-2 focus:ring-primary"
             />
             <Button
-              onClick={() => handleEmailSignIn(email, password)}
+              onClick={handleEmailSignIn}
               disabled={loading || !email || !password}
               className="w-full"
               variant="outline"
@@ -86,6 +103,10 @@ export default function LoginPage() {
             </Button>
           </div>
 
+          {error && (
+            <p className="text-sm text-center text-destructive">{error}</p>
+          )}
+
           <p className="text-xs text-center text-muted-foreground">
             Protected by Supabase Authentication
           </p>
@@ -93,9 +114,4 @@ export default function LoginPage() {
       </Card>
     </div>
   );
-}
-
-async function handleEmailSignIn(email: string, password: string) {
-  // Implementation for email sign in
-  console.log('Email sign in:', email);
 }

@@ -53,7 +53,7 @@ export function Sidebar() {
         {/* Logo */}
         <div className="p-4 border-b border-border">
           <div className={`font-bold text-lg ${isOpen ? 'block' : 'hidden md:block'}`}>
-            {isOpen ? 'YAKGU' : 'Y'}
+            {isOpen ? 'Yakgu Data Manager' : 'Y'}
           </div>
         </div>
 

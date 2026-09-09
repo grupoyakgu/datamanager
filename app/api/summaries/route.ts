@@ -1,5 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { supabaseAdmin } from '@/lib/supabase';
+import { getSupabaseAdmin } from '@/lib/supabase';
+
+export const dynamic = 'force-dynamic';
 
 export async function GET(request: NextRequest) {
   try {
@@ -8,6 +10,7 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
+    const supabaseAdmin = getSupabaseAdmin();
     const token = authHeader.split('Bearer ')[1];
     const { data, error } = await supabaseAdmin.auth.getUser(token);
 
@@ -42,6 +45,7 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
+    const supabaseAdmin = getSupabaseAdmin();
     const token = authHeader.split('Bearer ')[1];
     const { data, error } = await supabaseAdmin.auth.getUser(token);
 

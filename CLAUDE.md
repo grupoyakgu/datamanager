@@ -1,56 +1,51 @@
-# YAKGU Knowledge Hub - Development Documentation
+# Grupo Yakgu Data Manager - Development Documentation
 
 ## Project Overview
 
-YAKGU Knowledge Hub is a centralized knowledge management system for Grupo Yakgu. It enables automatic ingestion of meeting summaries from Gmail, AI-powered extraction of structured data, semantic search, and comprehensive knowledge organization.
+Grupo Yakgu Data Manager is the central data management platform for Grupo Yakgu. The first module, carried over from the earlier Knowledge Hub prototype, ingests meeting summaries from Gmail, extracts structured data with AI, and organises it with folders and tags. Further data modules will be added on the same foundation.
 
 ## Tech Stack
 
-- **Framework**: Next.js 15 (App Router)
+- **Framework**: Next.js 16 (App Router)
 - **Language**: TypeScript
-- **Styling**: Tailwind CSS
-- **UI Components**: shadcn/ui (custom implementations)
+- **Styling**: Tailwind CSS v4 (tokens defined in `app/globals.css` via `@theme`; no `tailwind.config` file)
+- **UI Components**: shadcn/ui-style primitives in `components/ui`
 - **Database**: Supabase (PostgreSQL)
-- **Authentication**: Supabase Auth (Google OAuth)
+- **Authentication**: Supabase Auth (Google OAuth); callback handled at `app/auth/callback`
 - **State Management**: React Query + React Context
 - **AI/Extraction**: OpenAI API
 
-## Key Features (In Development)
+## Conventions
 
-### 1. Authentication
+- Client code calls internal API routes through `apiFetch` in `lib/api-client.ts`, which attaches the Supabase session token. API routes validate the `Authorization: Bearer` header with `supabaseAdmin.auth.getUser`.
+- Dark mode is class-based (`next-themes` with `attribute="class"`); colour tokens live in `app/globals.css`.
+- Keep `types/database.ts` in sync with `migrations/`.
+- Run `npm run typecheck && npm run lint && npm run build` before pushing.
+
+## Modules
+
+### Authentication
 - Google OAuth login via Supabase
-- User profile management
-- Session management
+- User profile row in `users` table
 
-### 2. Meeting Summaries
-- Ingest summaries from Gmail automatically
-- Display summaries with metadata
+### Meeting Summaries (first data module)
+- Ingest summaries from Gmail
 - Extract participants, topics, decisions, action items via AI
-- Calculate completeness score
+- Completeness score per summary
+- Folder (single) and tag (multiple) organisation
+- Full-text search with date, folder, tag and participant filters
 
-### 3. Organization
-- Folder-based organization (not hierarchical)
-- Tag-based categorization (multiple tags per summary)
-- No duplication - each summary belongs to one folder
-
-### 4. Search
-- Full-text search across summaries
-- Filter by date, folder, tags, participants
-- Natural language search (semantic - future enhancement)
-
-### 5. Admin Dashboard
-- User management
-- Folder management
-- Tag management
+### Admin
+- User, folder and tag management
 - Gmail integration setup
 
 ## Database Schema
 
-See `migrations/001_initial_schema.sql` for full schema.
+See `migrations/001_initial_schema.sql` for the full schema.
 
 ## Environment Variables
 
-Create `.env.local`:
+Copy `.env.example` to `.env.local` and fill in:
 
 ```
 NEXT_PUBLIC_SUPABASE_URL=your_supabase_url
@@ -66,6 +61,8 @@ ADMIN_EMAIL=koby@grupoyakgu.es
 ```bash
 npm install
 npm run dev
+npm run typecheck
+npm run lint
 npm run build
 npm start
 ```

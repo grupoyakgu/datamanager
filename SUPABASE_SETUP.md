@@ -34,7 +34,7 @@ Get the password from Supabase dashboard → Settings → Database.
 npm run dev
 ```
 
-Visit http://localhost:3000/login - should load without database errors.
+Visit http://localhost:3000 - you should be redirected to the login page without database errors.
 
 ## Step 4: Gmail Integration (Next)
 
