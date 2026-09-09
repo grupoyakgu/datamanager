@@ -66,5 +66,5 @@ types/           Shared TypeScript types
 
 ## Deployment
 
-Deploy to Vercel; `vercel.json` schedules `/api/cron/sync` hourly. Set every
+Production deploys from the `main` branch on Vercel; `vercel.json` schedules `/api/cron/sync` hourly. Set every
 variable from `.env.example` in the project settings (`CRON_SECRET` protects the cron route).
