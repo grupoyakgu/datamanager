@@ -59,6 +59,97 @@ export async function getFile(userId: string, fileId: string): Promise<DriveFile
   return { ...f, isFolder: f.mimeType === FOLDER_MIME };
 }
 
+/** Find a folder named `name` directly under `parentId`, creating it if missing. */
+export async function ensureFolder(userId: string, parentId: string, name: string): Promise<string> {
+  const escaped = name.replace(/'/g, "\\'");
+  const q = `'${parentId}' in parents and name = '${escaped}' and mimeType = '${FOLDER_MIME}' and trashed = false`;
+  const params = new URLSearchParams({
+    q,
+    fields: 'files(id,name)',
+    pageSize: '1',
+    supportsAllDrives: 'true',
+    includeItemsFromAllDrives: 'true',
+  });
+  const existing = await googleFetch<{ files: { id: string; name: string }[] }>(userId, `${DRIVE_BASE}/files?${params}`);
+  if (existing.files.length > 0) return existing.files[0].id;
+
+  const created = await googleFetch<{ id: string }>(userId, `${DRIVE_BASE}/files?supportsAllDrives=true`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ name, mimeType: FOLDER_MIME, parents: [parentId] }),
+  });
+  return created.id;
+}
+
+/** Create (or reuse) a chain of nested folders, e.g. ['Data Manager', 'Summaries']. */
+export async function ensureFolderPath(userId: string, rootId: string, segments: string[]): Promise<string> {
+  let current = rootId;
+  for (const segment of segments) {
+    current = await ensureFolder(userId, current, segment);
+  }
+  return current;
+}
+
+/**
+ * Create a new Google Doc (when `fileId` is omitted) or replace the content
+ * of an existing one, from plain text. Uses a multipart upload so Drive
+ * converts the text into a native Google Doc. Parents are only applied on
+ * creation; an existing file's folder placement is left untouched.
+ */
+export async function createOrUpdateDoc(
+  userId: string,
+  params: { fileId?: string; name: string; parents?: string[]; text: string }
+): Promise<{ id: string }> {
+  const boundary = `driveDoc${Math.random().toString(36).slice(2)}`;
+  const metadata: Record<string, unknown> = { name: params.name, mimeType: 'application/vnd.google-apps.document' };
+  if (!params.fileId && params.parents) metadata.parents = params.parents;
+
+  const body =
+    `--${boundary}
+Content-Type: application/json; charset=UTF-8
+
+${JSON.stringify(metadata)}
+` +
+    `--${boundary}
+Content-Type: text/plain; charset=UTF-8
+
+${params.text}
+` +
+    `--${boundary}--`;
+
+  const url = params.fileId
+    ? `https://www.googleapis.com/upload/drive/v3/files/${params.fileId}?uploadType=multipart&supportsAllDrives=true&fields=id`
+    : `https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart&supportsAllDrives=true&fields=id`;
+
+  return googleFetch<{ id: string }>(userId, url, {
+    method: params.fileId ? 'PATCH' : 'POST',
+    headers: { 'Content-Type': `multipart/related; boundary=${boundary}` },
+    body,
+  });
+}
+
+/** Grant read access to everyone on `domain` for a file/folder, unless already present. */
+export async function ensureDomainReaderAccess(userId: string, fileId: string, domain: string): Promise<void> {
+  try {
+    const existing = await googleFetch<{ permissions: { type: string; domain?: string }[] }>(
+      userId,
+      `${DRIVE_BASE}/files/${fileId}/permissions?fields=permissions(type,domain)&supportsAllDrives=true`
+    );
+    if (existing.permissions?.some((p) => p.type === 'domain' && p.domain === domain)) return;
+  } catch (error) {
+    console.error('Could not read permissions for', fileId, error);
+  }
+  try {
+    await googleFetch(userId, `${DRIVE_BASE}/files/${fileId}/permissions?supportsAllDrives=true`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ type: 'domain', domain, role: 'reader' }),
+    });
+  } catch (error) {
+    console.error('Failed to grant domain access on', fileId, error);
+  }
+}
+
 /**
  * Walk a folder's parent chain up to (but not including) the implicit Drive
  * root, returning ancestors ordered root-first with the folder itself last.

@@ -3,6 +3,7 @@ import { getSettings } from '@/lib/settings';
 import { computeCompleteness } from '@/lib/completeness';
 import { extractFromSummary } from '@/lib/ai/extraction';
 import { embedText } from '@/lib/ai/embeddings';
+import { exportSummaryToDrive } from './drive-export';
 import { getActiveTags } from './repository';
 
 /**
@@ -105,6 +106,13 @@ export async function processSummary(summaryId: string, options: { applyFolderRu
       })
       .eq('id', summaryId);
     if (updateError) throw new Error(updateError.message);
+
+    try {
+      await exportSummaryToDrive(summaryId);
+    } catch (driveError) {
+      // Best-effort: extraction already succeeded, don't fail the whole run over Drive.
+      console.error('Drive export failed for summary', summaryId, driveError);
+    }
 
     return { completeness, tags: extraction.tags, folderId };
   } catch (processingError) {

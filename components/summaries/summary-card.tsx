@@ -23,6 +23,16 @@ function summarizeList(items: string[], max: number): string {
 }
 
 /**
+ * Cap the preview to a fixed character count on top of the CSS line-clamp.
+ * A short DOM string can never blow out a flex/grid item's intrinsic width,
+ * so this is a second line of defense independent of any layout quirk.
+ */
+function previewText(content: string, max = 140): string {
+  const trimmed = content.trim();
+  return trimmed.length > max ? `${trimmed.slice(0, max).trimEnd()}…` : trimmed;
+}
+
+/**
  * A compact, bounded-height preview card. The whole card opens the full
  * summary; only the star button intercepts the click to toggle favorites.
  */
@@ -31,11 +41,11 @@ export function SummaryCard({ summary, compact = false }: { summary: SummaryView
   const toggleFavorite = useToggleFavorite();
 
   return (
-    <Link href={`/summaries/${summary.id}`} className="block">
+    <Link href={`/summaries/${summary.id}`} className="block min-w-0">
       <Card className="hover:shadow-md hover:border-primary/40 transition-shadow">
         <CardContent className={cn('pt-4', compact && 'pb-4')}>
           <div className="flex items-start justify-between gap-3">
-            <span className="font-medium line-clamp-1">{summary.title}</span>
+            <span className="font-medium line-clamp-1 min-w-0 flex-1">{summary.title}</span>
             <button
               type="button"
               className="shrink-0 text-muted-foreground hover:text-amber-500"
@@ -51,7 +61,7 @@ export function SummaryCard({ summary, compact = false }: { summary: SummaryView
           </div>
 
           {!compact && summary.content && (
-            <p className="text-sm text-muted-foreground mt-1.5 line-clamp-1">{summary.content}</p>
+            <p className="text-sm text-muted-foreground mt-1.5 line-clamp-1 min-w-0">{previewText(summary.content)}</p>
           )}
 
           <div className="flex flex-wrap items-center gap-x-4 gap-y-1 mt-3 text-xs text-muted-foreground">

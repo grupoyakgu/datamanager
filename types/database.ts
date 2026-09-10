@@ -105,6 +105,8 @@ export interface SummaryView {
   language: string | null;
   processing_status: 'pending' | 'processed' | 'failed';
   processing_error: string | null;
+  drive_doc_url: string | null;
+  drive_sync_error: string | null;
   created_at: string;
   updated_at: string;
   email_from: string | null;

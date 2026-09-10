@@ -2,7 +2,7 @@
 
 import { use, useState } from 'react';
 import Link from 'next/link';
-import { ArrowLeft, Calendar, Users, Tag as TagIcon, Folder, Mail, RefreshCw, Star, Clock, Pencil } from 'lucide-react';
+import { ArrowLeft, Calendar, Users, Tag as TagIcon, Folder, Mail, RefreshCw, Star, Clock, Pencil, HardDriveUpload, ExternalLink } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -64,6 +64,7 @@ export default function SummaryDetailPage({ params }: { params: Promise<{ id: st
   const [editingDetails, setEditingDetails] = useState(false);
   const [detailsForm, setDetailsForm] = useState<DetailsForm | null>(null);
   const [savingDetails, setSavingDetails] = useState(false);
+  const [exportingDrive, setExportingDrive] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
 
   if (isLoading) return <p className="text-muted-foreground">{t('common.loading')}</p>;
@@ -89,6 +90,20 @@ export default function SummaryDetailPage({ params }: { params: Promise<{ id: st
       setMessage(err instanceof Error ? err.message : t('common.error'));
     } finally {
       setReprocessing(false);
+    }
+  };
+
+  const exportToDrive = async () => {
+    setExportingDrive(true);
+    try {
+      await api.post(`/api/summaries/${summary.id}/export-drive`);
+      invalidate();
+      setMessage(t('common.saved'));
+      setTimeout(() => setMessage(null), 1500);
+    } catch (err) {
+      setMessage(err instanceof Error ? err.message : t('common.error'));
+    } finally {
+      setExportingDrive(false);
     }
   };
 
@@ -135,8 +150,8 @@ export default function SummaryDetailPage({ params }: { params: Promise<{ id: st
 
       <header className="space-y-3">
         <div className="flex items-start justify-between gap-3">
-          <h1 className="text-2xl md:text-3xl font-bold tracking-tight">{summary.title}</h1>
-          <div className="flex items-center gap-2 shrink-0">
+          <h1 className="text-2xl md:text-3xl font-bold tracking-tight min-w-0 flex-1 break-words">{summary.title}</h1>
+          <div className="flex items-center gap-2 shrink-0 flex-wrap justify-end">
             <Button
               variant="ghost"
               size="icon"
@@ -148,6 +163,10 @@ export default function SummaryDetailPage({ params }: { params: Promise<{ id: st
             <Button variant="outline" onClick={reprocess} disabled={reprocessing} title={t('summaries.reprocess')}>
               <RefreshCw size={16} className={cn('mr-1', reprocessing && 'animate-spin')} />
               {reprocessing ? t('summaries.reprocessing') : t('summaries.reprocess')}
+            </Button>
+            <Button variant="outline" onClick={exportToDrive} disabled={exportingDrive} title={t('summaries.exportToDrive')}>
+              <HardDriveUpload size={16} className="mr-1" />
+              {exportingDrive ? t('summaries.exportingToDrive') : t('summaries.exportToDrive')}
             </Button>
             <Button onClick={() => setShowEmail(true)}>
               <Mail size={16} className="mr-1" />
@@ -347,6 +366,25 @@ export default function SummaryDetailPage({ params }: { params: Promise<{ id: st
               {summary.email_from && <Row label={t('summaries.receivedFrom')} value={summary.email_from} />}
               {summary.email_received_at && <Row label={t('summaries.received')} value={new Date(summary.email_received_at).toLocaleString()} />}
               {summary.created_by && <Row label={t('summaries.addedBy')} value={summary.created_by.name ?? summary.created_by.email} />}
+              {summary.drive_doc_url ? (
+                <div className="flex justify-between gap-3">
+                  <span className="text-muted-foreground">{t('summaries.driveDoc')}</span>
+                  <a
+                    href={summary.drive_doc_url}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="inline-flex items-center gap-1 text-primary hover:underline"
+                  >
+                    {t('summaries.viewInDrive')} <ExternalLink size={14} />
+                  </a>
+                </div>
+              ) : (
+                <div className="flex justify-between gap-3">
+                  <span className="text-muted-foreground">{t('summaries.driveDoc')}</span>
+                  <span className="text-right text-muted-foreground">{t('summaries.driveNotSynced')}</span>
+                </div>
+              )}
+              {summary.drive_sync_error && <p className="text-xs text-destructive">{summary.drive_sync_error}</p>}
             </CardContent>
           </Card>
         </aside>

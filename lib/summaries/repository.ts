@@ -3,7 +3,7 @@ import type { SummaryView } from '@/types/database';
 
 export const SUMMARY_SELECT = `
   id, title, content, meeting_date, meeting_time, source, completeness_score, missing_data,
-  language, processing_status, processing_error, created_at, updated_at,
+  language, processing_status, processing_error, drive_doc_id, drive_sync_error, created_at, updated_at,
   email_from, email_subject, email_received_at,
   folder:folders ( id, name ),
   meeting_summary_tags ( tags ( id, name ) ),
@@ -23,6 +23,8 @@ interface RawSummary {
   language: string | null;
   processing_status: 'pending' | 'processed' | 'failed';
   processing_error: string | null;
+  drive_doc_id: string | null;
+  drive_sync_error: string | null;
   created_at: string;
   updated_at: string;
   email_from: string | null;
@@ -57,6 +59,8 @@ export function toSummaryView(raw: unknown, favoriteIds: Set<string> = new Set()
     language: row.language,
     processing_status: row.processing_status,
     processing_error: row.processing_error,
+    drive_doc_url: row.drive_doc_id ? `https://docs.google.com/document/d/${row.drive_doc_id}/edit` : null,
+    drive_sync_error: row.drive_sync_error,
     created_at: row.created_at,
     updated_at: row.updated_at,
     email_from: row.email_from,

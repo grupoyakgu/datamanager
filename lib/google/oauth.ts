@@ -6,7 +6,10 @@ export const GOOGLE_SCOPES = [
   'profile',
   'https://www.googleapis.com/auth/gmail.readonly',
   'https://www.googleapis.com/auth/gmail.send',
-  'https://www.googleapis.com/auth/drive.readonly',
+  // Full Drive access (not drive.readonly / drive.file): the app must be able
+  // to find pre-existing folders the admin created by hand (e.g. "Data
+  // Manager/Summaries") and create tag subfolders and Docs inside them.
+  'https://www.googleapis.com/auth/drive',
 ];
 
 export class GoogleAuthError extends Error {
