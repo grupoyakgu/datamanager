@@ -8,8 +8,13 @@ if (!supabaseUrl || !supabaseAnonKey) {
 }
 
 /** Browser/anon client. Safe to import from client components. */
+/**
+ * Implicit flow on purpose: the session comes back in the URL hash and needs no
+ * per-origin PKCE verifier, so sign-in still completes when Supabase returns the
+ * user to its Site URL instead of the exact origin the flow started on.
+ */
 export const supabase = createClient(supabaseUrl, supabaseAnonKey, {
-  auth: { flowType: 'pkce', detectSessionInUrl: true, persistSession: true, autoRefreshToken: true },
+  auth: { flowType: 'implicit', detectSessionInUrl: true, persistSession: true, autoRefreshToken: true },
 });
 
 let adminClient: SupabaseClient | null = null;

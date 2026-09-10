@@ -47,8 +47,8 @@ export function AuthReturnHandler({ fallback = '/login' }: { fallback?: string }
         return;
       }
 
-      // supabase-js detects ?code= / #access_token on start-up and exchanges it itself
-      // (consuming the one-time PKCE verifier). Wait for that before doing anything.
+      // supabase-js processes #access_token (implicit) or ?code= (PKCE) on start-up.
+      // Wait for that before doing anything else.
       try {
         await supabase.auth.initialize();
       } catch (err) {
@@ -57,6 +57,29 @@ export function AuthReturnHandler({ fallback = '/login' }: { fallback?: string }
 
       const { data } = await supabase.auth.getSession();
       if (data.session) return finish(data.session);
+
+      if (window.location.hash.includes('access_token')) {
+        // Hash tokens present but not yet applied; process them explicitly.
+        const params = new URLSearchParams(window.location.hash.slice(1));
+        const accessToken = params.get('access_token');
+        const refreshToken = params.get('refresh_token');
+        if (accessToken && refreshToken) {
+          const { data: set, error: sessionError } = await supabase.auth.setSession({
+            access_token: accessToken,
+            refresh_token: refreshToken,
+          });
+          if (set.session) {
+            window.history.replaceState({}, '', url.pathname);
+            return finish({
+              ...set.session,
+              provider_token: params.get('provider_token') ?? set.session.provider_token,
+              provider_refresh_token: params.get('provider_refresh_token') ?? set.session.provider_refresh_token,
+            });
+          }
+          setError(sessionError?.message ?? 'Sign-in failed');
+          return;
+        }
+      }
 
       if (code) {
         // Detection did not run (e.g. verifier still present); exchange explicitly.
