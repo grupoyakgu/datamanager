@@ -9,6 +9,30 @@ export const dynamic = 'force-dynamic';
 
 type Params = { params: Promise<{ id: string }> };
 
+interface SummaryPatchBody {
+  folderId?: string;
+  tagIds?: string[];
+  title?: string;
+  meetingDate?: string | null;
+  meetingTime?: string | null;
+  participants?: string[];
+  companies?: string[];
+  topics?: string[];
+  actionItems?: string[];
+  decisions?: string[];
+}
+
+function cleanList(value: unknown): string[] | undefined {
+  if (!Array.isArray(value)) return undefined;
+  return Array.from(
+    new Set(
+      value
+        .map((v) => (typeof v === 'string' ? v.trim() : ''))
+        .filter((v) => v.length > 0)
+    )
+  );
+}
+
 export const GET = handleRoute(async (request: Request, { params }: Params) => {
   const { user } = await requireUser(request);
   const { id } = await params;
@@ -20,13 +44,14 @@ export const GET = handleRoute(async (request: Request, { params }: Params) => {
 export const PATCH = handleRoute(async (request: Request, { params }: Params) => {
   const { user } = await requireUser(request);
   const { id } = await params;
-  const body = await readJson<{ folderId?: string; tagIds?: string[]; title?: string; meetingDate?: string | null }>(request);
+  const body = await readJson<SummaryPatchBody>(request);
   const supabaseAdmin = getSupabaseAdmin();
 
   const patch: Record<string, unknown> = {};
   if (body.folderId) patch.folder_id = body.folderId;
   if (body.title?.trim()) patch.title = body.title.trim();
   if (body.meetingDate !== undefined) patch.meeting_date = body.meetingDate || null;
+  if (body.meetingTime !== undefined) patch.meeting_time = body.meetingTime || null;
   if (Object.keys(patch).length > 0) {
     const { error } = await supabaseAdmin.from('meeting_summaries').update(patch).eq('id', id);
     if (error) throw new Error(error.message);
@@ -42,7 +67,32 @@ export const PATCH = handleRoute(async (request: Request, { params }: Params) =>
     }
   }
 
-  if (Array.isArray(body.tagIds) || body.meetingDate !== undefined) await recomputeCompleteness(id);
+  const extractedPatch: Record<string, unknown> = {};
+  const participants = cleanList(body.participants);
+  const companies = cleanList(body.companies);
+  const topics = cleanList(body.topics);
+  const actionItems = cleanList(body.actionItems);
+  const decisions = cleanList(body.decisions);
+  if (participants !== undefined) extractedPatch.participants = participants;
+  if (companies !== undefined) extractedPatch.companies = companies;
+  if (topics !== undefined) extractedPatch.topics = topics;
+  if (actionItems !== undefined) extractedPatch.action_items = actionItems;
+  if (decisions !== undefined) extractedPatch.decisions = decisions;
+
+  if (Object.keys(extractedPatch).length > 0) {
+    const { error } = await supabaseAdmin
+      .from('extracted_data')
+      .upsert({ summary_id: id, ...extractedPatch }, { onConflict: 'summary_id' });
+    if (error) throw new Error(error.message);
+  }
+
+  const shouldRecompute =
+    Array.isArray(body.tagIds) ||
+    body.meetingDate !== undefined ||
+    body.meetingTime !== undefined ||
+    Object.keys(extractedPatch).length > 0;
+  if (shouldRecompute) await recomputeCompleteness(id);
+
   await logAudit(user.id, 'summary.updated', 'meeting_summary', id, body as Record<string, unknown>);
 
   const summary = await getSummaryById(id, user.id);

@@ -14,6 +14,7 @@ import type { DriveFile } from '@/lib/google/drive';
 
 interface DriveResponse {
   folder: DriveFile | null;
+  ancestors: { id: string; name: string }[];
   files: DriveFile[];
   nextPageToken?: string;
   rootId: string;
@@ -33,23 +34,28 @@ function fileTypeLabel(mimeType: string): string {
 export default function FilesPage() {
   const t = useT();
   const { user } = useUser();
-  const [path, setPath] = useState<{ id: string; name: string }[]>([]);
+  // null = the admin-configured default root. The breadcrumb itself comes
+  // from the server, which walks the folder's real Drive ancestry, so it
+  // always matches Drive's own "My Drive > … > current folder" trail.
+  const [folderId, setFolderId] = useState<string | null>(null);
   const [search, setSearch] = useState('');
   const [activeSearch, setActiveSearch] = useState('');
-  const current = path[path.length - 1];
 
   const { data, isLoading, error } = useQuery({
-    queryKey: ['drive', current?.id ?? 'root', activeSearch],
+    queryKey: ['drive', folderId ?? 'root', activeSearch],
     queryFn: () => {
       const params = new URLSearchParams();
       if (activeSearch) params.set('q', activeSearch);
-      else if (current) params.set('folderId', current.id);
+      else if (folderId) params.set('folderId', folderId);
       return api.get<DriveResponse>(`/api/drive/files?${params}`);
     },
     enabled: !!user,
   });
 
-  const notConnected = error instanceof ApiError && error.status === 409;
+  const notConnected = error instanceof ApiError && error.code === 'drive_not_connected';
+  const rootInvalid = error instanceof ApiError && error.code === 'drive_root_invalid';
+
+  const crumbs = [{ id: null as string | null, name: t('files.root') }, ...(data?.ancestors ?? [])];
 
   return (
     <div>
@@ -78,22 +84,28 @@ export default function FilesPage() {
 
       {!activeSearch && (
         <nav className="flex items-center flex-wrap gap-1 text-sm mb-4">
-          <button type="button" className="hover:underline" onClick={() => setPath([])}>
-            {t('files.root')}
-          </button>
-          {path.map((p, i) => (
-            <span key={p.id} className="flex items-center gap-1">
-              <ChevronRight size={14} className="text-muted-foreground" />
-              <button type="button" className="hover:underline" onClick={() => setPath(path.slice(0, i + 1))}>
-                {p.name}
-              </button>
-            </span>
-          ))}
+          {crumbs.map((c, i) => {
+            const isLast = i === crumbs.length - 1;
+            return (
+              <span key={c.id ?? 'root'} className="flex items-center gap-1">
+                {i > 0 && <ChevronRight size={14} className="text-muted-foreground" />}
+                {isLast ? (
+                  <span className="font-medium">{c.name}</span>
+                ) : (
+                  <button type="button" className="hover:underline text-muted-foreground" onClick={() => setFolderId(c.id)}>
+                    {c.name}
+                  </button>
+                )}
+              </span>
+            );
+          })}
         </nav>
       )}
 
       {notConnected ? (
         <EmptyState>{t('files.notConnected')}</EmptyState>
+      ) : rootInvalid ? (
+        <EmptyState>{t('files.rootInvalid')}</EmptyState>
       ) : error ? (
         <p className="text-sm text-destructive">{(error as Error).message}</p>
       ) : isLoading ? (
@@ -119,7 +131,7 @@ export default function FilesPage() {
                     <button
                       type="button"
                       className="inline-flex items-center gap-2 hover:underline text-left"
-                      onClick={() => { setActiveSearch(''); setSearch(''); setPath([...path, { id: file.id, name: file.name }]); }}
+                      onClick={() => { setActiveSearch(''); setSearch(''); setFolderId(file.id); }}
                     >
                       <Folder size={16} className="text-amber-500" /> {file.name}
                     </button>

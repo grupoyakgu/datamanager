@@ -2,14 +2,17 @@
 
 import { use, useState } from 'react';
 import Link from 'next/link';
-import { ArrowLeft, Calendar, Users, Tag as TagIcon, Folder, Mail, RefreshCw, Star, Clock } from 'lucide-react';
+import { ArrowLeft, Calendar, Users, Tag as TagIcon, Folder, Mail, RefreshCw, Star, Clock, Pencil } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Select } from '@/components/ui/select';
 import { Label } from '@/components/ui/label';
+import { Input } from '@/components/ui/input';
+import { Textarea } from '@/components/ui/textarea';
 import { CompletenessBadge, MissingList } from '@/components/summaries/completeness-badge';
 import { SendEmailDialog } from '@/components/summaries/send-email-dialog';
+import { LinkifiedText } from '@/components/summaries/linkified-text';
 import { formatDate } from '@/components/summaries/summary-card';
 import { EmptyState } from '@/components/layout/page-header';
 import { useFolders, useSummary, useTags, useToggleFavorite, useInvalidateSummaries } from '@/hooks/use-api';
@@ -17,6 +20,35 @@ import { api } from '@/lib/api-client';
 import { useT } from '@/lib/i18n/context';
 import { cn } from '@/lib/utils';
 import type { SummaryView } from '@/types/database';
+
+interface DetailsForm {
+  meetingDate: string;
+  meetingTime: string;
+  participants: string;
+  companies: string;
+  topics: string;
+  actionItems: string;
+  decisions: string;
+}
+
+function toForm(summary: SummaryView): DetailsForm {
+  return {
+    meetingDate: summary.meeting_date ?? '',
+    meetingTime: summary.meeting_time ?? '',
+    participants: summary.participants.join('\n'),
+    companies: summary.companies.join('\n'),
+    topics: summary.topics.join('\n'),
+    actionItems: summary.action_items.join('\n'),
+    decisions: summary.decisions.join('\n'),
+  };
+}
+
+function toLines(value: string): string[] {
+  return value
+    .split('\n')
+    .map((line) => line.trim())
+    .filter((line) => line.length > 0);
+}
 
 export default function SummaryDetailPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = use(params);
@@ -29,6 +61,9 @@ export default function SummaryDetailPage({ params }: { params: Promise<{ id: st
   const [showEmail, setShowEmail] = useState(false);
   const [reprocessing, setReprocessing] = useState(false);
   const [editingTags, setEditingTags] = useState(false);
+  const [editingDetails, setEditingDetails] = useState(false);
+  const [detailsForm, setDetailsForm] = useState<DetailsForm | null>(null);
+  const [savingDetails, setSavingDetails] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
 
   if (isLoading) return <p className="text-muted-foreground">{t('common.loading')}</p>;
@@ -61,6 +96,35 @@ export default function SummaryDetailPage({ params }: { params: Promise<{ id: st
     const current = summary.tags.map((tag) => tag.id);
     const next = current.includes(tagId) ? current.filter((x) => x !== tagId) : [...current, tagId];
     update({ tagIds: next });
+  };
+
+  const openDetailsEditor = () => {
+    setDetailsForm(toForm(summary));
+    setEditingDetails(true);
+  };
+
+  const saveDetails = async () => {
+    if (!detailsForm) return;
+    setSavingDetails(true);
+    try {
+      await api.patch<SummaryView>(`/api/summaries/${summary.id}`, {
+        meetingDate: detailsForm.meetingDate || null,
+        meetingTime: detailsForm.meetingTime || null,
+        participants: toLines(detailsForm.participants),
+        companies: toLines(detailsForm.companies),
+        topics: toLines(detailsForm.topics),
+        actionItems: toLines(detailsForm.actionItems),
+        decisions: toLines(detailsForm.decisions),
+      });
+      invalidate();
+      setEditingDetails(false);
+      setMessage(t('common.saved'));
+      setTimeout(() => setMessage(null), 1500);
+    } catch (err) {
+      setMessage(err instanceof Error ? err.message : t('common.error'));
+    } finally {
+      setSavingDetails(false);
+    }
   };
 
   return (
@@ -135,22 +199,87 @@ export default function SummaryDetailPage({ params }: { params: Promise<{ id: st
               <CardTitle>{t('summaries.content')}</CardTitle>
             </CardHeader>
             <CardContent>
-              <div className="whitespace-pre-wrap leading-relaxed text-sm" dir="auto">
-                {summary.content}
+              <div className="whitespace-pre-wrap leading-relaxed text-sm break-words" dir="auto">
+                <LinkifiedText text={summary.content} />
               </div>
             </CardContent>
           </Card>
 
           <Card>
-            <CardHeader>
+            <CardHeader className="flex flex-row items-center justify-between space-y-0">
               <CardTitle>{t('summaries.aiInfo')}</CardTitle>
+              {editingDetails ? (
+                <div className="flex gap-2">
+                  <Button size="sm" variant="ghost" onClick={() => setEditingDetails(false)}>
+                    {t('common.cancel')}
+                  </Button>
+                  <Button size="sm" onClick={saveDetails} disabled={savingDetails}>
+                    {savingDetails ? t('common.loading') : t('common.save')}
+                  </Button>
+                </div>
+              ) : (
+                <Button size="sm" variant="outline" onClick={openDetailsEditor}>
+                  <Pencil size={14} className="mr-1" />
+                  {t('summaries.editDetails')}
+                </Button>
+              )}
             </CardHeader>
-            <CardContent className="grid grid-cols-1 md:grid-cols-2 gap-6">
-              <InfoList title={t('summaries.participants')} items={summary.participants} />
-              <InfoList title={t('summaries.topics')} items={summary.topics} />
-              <InfoList title={t('summaries.actionItems')} items={summary.action_items} />
-              <InfoList title={t('summaries.decisions')} items={summary.decisions} />
-              <InfoList title={t('summaries.companies')} items={summary.companies} />
+            <CardContent>
+              {editingDetails && detailsForm ? (
+                <div className="space-y-4">
+                  <div className="grid grid-cols-2 gap-3">
+                    <div className="space-y-1">
+                      <Label>{t('summaries.meetingDate')}</Label>
+                      <Input
+                        type="date"
+                        value={detailsForm.meetingDate}
+                        onChange={(e) => setDetailsForm({ ...detailsForm, meetingDate: e.target.value })}
+                      />
+                    </div>
+                    <div className="space-y-1">
+                      <Label>{t('summaries.meetingTime')}</Label>
+                      <Input
+                        type="time"
+                        value={detailsForm.meetingTime}
+                        onChange={(e) => setDetailsForm({ ...detailsForm, meetingTime: e.target.value })}
+                      />
+                    </div>
+                  </div>
+                  <EditableListField
+                    label={t('summaries.participants')}
+                    value={detailsForm.participants}
+                    onChange={(v) => setDetailsForm({ ...detailsForm, participants: v })}
+                  />
+                  <EditableListField
+                    label={t('summaries.topics')}
+                    value={detailsForm.topics}
+                    onChange={(v) => setDetailsForm({ ...detailsForm, topics: v })}
+                  />
+                  <EditableListField
+                    label={t('summaries.actionItems')}
+                    value={detailsForm.actionItems}
+                    onChange={(v) => setDetailsForm({ ...detailsForm, actionItems: v })}
+                  />
+                  <EditableListField
+                    label={t('summaries.decisions')}
+                    value={detailsForm.decisions}
+                    onChange={(v) => setDetailsForm({ ...detailsForm, decisions: v })}
+                  />
+                  <EditableListField
+                    label={t('summaries.companies')}
+                    value={detailsForm.companies}
+                    onChange={(v) => setDetailsForm({ ...detailsForm, companies: v })}
+                  />
+                </div>
+              ) : (
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                  <InfoList title={t('summaries.participants')} items={summary.participants} />
+                  <InfoList title={t('summaries.topics')} items={summary.topics} />
+                  <InfoList title={t('summaries.actionItems')} items={summary.action_items} />
+                  <InfoList title={t('summaries.decisions')} items={summary.decisions} />
+                  <InfoList title={t('summaries.companies')} items={summary.companies} />
+                </div>
+              )}
             </CardContent>
           </Card>
         </div>
@@ -158,8 +287,17 @@ export default function SummaryDetailPage({ params }: { params: Promise<{ id: st
         <aside className="space-y-6">
           <Card>
             <CardContent className="pt-5 space-y-4">
-              <MissingList missing={summary.missing_data} />
-              {summary.missing_data.length === 0 && <p className="text-sm text-emerald-600">🟢 {t('summaries.complete')}</p>}
+              {summary.missing_data.length === 0 ? (
+                <p className="text-sm text-emerald-600">🟢 {t('summaries.complete')}</p>
+              ) : (
+                <div className="space-y-2">
+                  <MissingList missing={summary.missing_data} />
+                  <Button size="sm" variant="outline" onClick={openDetailsEditor}>
+                    <Pencil size={14} className="mr-1" />
+                    {t('summaries.editDetails')}
+                  </Button>
+                </div>
+              )}
 
               <div className="space-y-1">
                 <Label>{t('summaries.changeFolder')}</Label>
@@ -219,6 +357,19 @@ export default function SummaryDetailPage({ params }: { params: Promise<{ id: st
   );
 }
 
+function EditableListField({ label, value, onChange }: { label: string; value: string; onChange: (value: string) => void }) {
+  const t = useT();
+  return (
+    <div className="space-y-1">
+      <div className="flex items-center justify-between">
+        <Label>{label}</Label>
+        <span className="text-xs text-muted-foreground">{t('summaries.oneItemPerLine')}</span>
+      </div>
+      <Textarea rows={3} value={value} onChange={(e) => onChange(e.target.value)} />
+    </div>
+  );
+}
+
 function InfoList({ title, items }: { title: string; items: string[] }) {
   const t = useT();
   return (
@@ -229,7 +380,9 @@ function InfoList({ title, items }: { title: string; items: string[] }) {
       ) : (
         <ul className="list-disc list-inside space-y-1 text-sm">
           {items.map((item) => (
-            <li key={item}>{item}</li>
+            <li key={item}>
+              <LinkifiedText text={item} />
+            </li>
           ))}
         </ul>
       )}
