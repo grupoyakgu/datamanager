@@ -34,11 +34,11 @@ export default function LoginPage() {
     setLoading(true);
     setError(null);
     try {
-      const appUrl = process.env.NEXT_PUBLIC_APP_URL || window.location.origin;
+      // The PKCE verifier lives in this origin's storage, so always return to the same origin.
       const { error } = await supabase.auth.signInWithOAuth({
         provider: 'google',
         options: {
-          redirectTo: `${appUrl}/auth/callback`,
+          redirectTo: `${window.location.origin}/auth/callback`,
           scopes: GOOGLE_SCOPES,
           queryParams: { access_type: 'offline', prompt: 'consent' },
         },
