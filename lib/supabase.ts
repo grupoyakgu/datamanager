@@ -8,7 +8,9 @@ if (!supabaseUrl || !supabaseAnonKey) {
 }
 
 /** Browser/anon client. Safe to import from client components. */
-export const supabase = createClient(supabaseUrl, supabaseAnonKey);
+export const supabase = createClient(supabaseUrl, supabaseAnonKey, {
+  auth: { flowType: 'pkce', detectSessionInUrl: true, persistSession: true, autoRefreshToken: true },
+});
 
 let adminClient: SupabaseClient | null = null;
 

@@ -1,5 +1,5 @@
-import { redirect } from 'next/navigation';
+import { AuthReturnHandler } from '@/components/auth/auth-return-handler';
 
 export default function Home() {
-  redirect('/dashboard');
+  return <AuthReturnHandler fallback="/login" />;
 }
