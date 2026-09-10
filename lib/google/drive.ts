@@ -128,6 +128,30 @@ ${params.text}
   });
 }
 
+/**
+ * Make a file's Drive parents match `desiredParents` exactly, adding and
+ * removing only what's needed. Used to move an exported summary between tag
+ * folders when its tags change, without duplicating or losing it elsewhere.
+ */
+export async function setDocParents(userId: string, fileId: string, desiredParents: string[]): Promise<void> {
+  const current = await getFile(userId, fileId);
+  const currentParents = new Set(current.parents ?? []);
+  const desired = new Set(desiredParents);
+  const toAdd = [...desired].filter((id) => !currentParents.has(id));
+  const toRemove = [...currentParents].filter((id) => !desired.has(id));
+  if (toAdd.length === 0 && toRemove.length === 0) return;
+
+  const params = new URLSearchParams({ supportsAllDrives: 'true' });
+  if (toAdd.length > 0) params.set('addParents', toAdd.join(','));
+  if (toRemove.length > 0) params.set('removeParents', toRemove.join(','));
+
+  await googleFetch(userId, `${DRIVE_BASE}/files/${fileId}?${params}`, {
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json' },
+    body: '{}',
+  });
+}
+
 /** Grant read access to everyone on `domain` for a file/folder, unless already present. */
 export async function ensureDomainReaderAccess(userId: string, fileId: string, domain: string): Promise<void> {
   try {

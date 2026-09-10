@@ -4,6 +4,7 @@ import { requireUser, logAudit } from '@/lib/auth';
 import { getSupabaseAdmin } from '@/lib/supabase';
 import { getSummaryById } from '@/lib/summaries/repository';
 import { recomputeCompleteness } from '@/lib/summaries/process';
+import { exportSummaryToDrive } from '@/lib/summaries/drive-export';
 
 export const dynamic = 'force-dynamic';
 
@@ -92,6 +93,15 @@ export const PATCH = handleRoute(async (request: Request, { params }: Params) =>
     body.meetingTime !== undefined ||
     Object.keys(extractedPatch).length > 0;
   if (shouldRecompute) await recomputeCompleteness(id);
+
+  if (Array.isArray(body.tagIds)) {
+    // Tags decide which Drive folder(s) the exported Doc lives in; move it now.
+    try {
+      await exportSummaryToDrive(id);
+    } catch (driveError) {
+      console.error('Drive export failed after tag update for', id, driveError);
+    }
+  }
 
   await logAudit(user.id, 'summary.updated', 'meeting_summary', id, body as Record<string, unknown>);
 

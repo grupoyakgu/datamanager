@@ -1,5 +1,5 @@
 import { getSupabaseAdmin } from '@/lib/supabase';
-import { createOrUpdateDoc, ensureDomainReaderAccess, ensureFolder, ensureFolderPath } from '@/lib/google/drive';
+import { createOrUpdateDoc, ensureDomainReaderAccess, ensureFolder, ensureFolderPath, setDocParents } from '@/lib/google/drive';
 import { GoogleAuthError } from '@/lib/google/oauth';
 
 /** Folder path (under the writer's My Drive) that holds every exported summary. */
@@ -97,6 +97,17 @@ export async function exportSummaryToDrive(summaryId: string): Promise<DriveExpo
       parents,
       text,
     });
+
+    if (summary.drive_doc_id) {
+      // Existing Doc: the content update above doesn't touch folder placement,
+      // so move it explicitly to match the current tag set (e.g. a tag was
+      // changed from one folder to another).
+      try {
+        await setDocParents(writer.id, doc.id, parents);
+      } catch (moveError) {
+        console.error('Failed to move Drive doc', doc.id, 'to match current tags:', moveError);
+      }
+    }
 
     const domain = writer.email.split('@')[1];
     if (domain) await ensureDomainReaderAccess(writer.id, baseFolderId, domain);
