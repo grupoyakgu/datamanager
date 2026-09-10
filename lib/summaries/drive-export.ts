@@ -1,9 +1,15 @@
 import { getSupabaseAdmin } from '@/lib/supabase';
+import { getSettings } from '@/lib/settings';
 import { createOrUpdateDoc, ensureDomainReaderAccess, ensureFolder, ensureFolderPath, setDocParents } from '@/lib/google/drive';
 import { GoogleAuthError } from '@/lib/google/oauth';
 
-/** Folder path (under the writer's My Drive) that holds every exported summary. */
+/** Folder names created under the configured Drive root to hold every exported summary. */
 const BASE_PATH = ['Data Manager', 'Summaries'];
+
+/** True when a Google API error is the "needs re-consent for a new scope" case. */
+export function isScopeError(error: unknown): boolean {
+  return error instanceof Error && /insufficient.?permission/i.test(error.message);
+}
 
 export interface DriveExportResult {
   docId: string;
@@ -73,7 +79,9 @@ export async function exportSummaryToDrive(summaryId: string): Promise<DriveExpo
     .filter((name): name is string => !!name);
 
   try {
-    const baseFolderId = await ensureFolderPath(writer.id, 'root', BASE_PATH);
+    const settings = await getSettings();
+    const driveRoot = settings.drive_root_folder_id || 'root';
+    const baseFolderId = await ensureFolderPath(writer.id, driveRoot, BASE_PATH);
     const parents = [baseFolderId];
     for (const tagName of tagNames) {
       parents.push(await ensureFolder(writer.id, baseFolderId, tagName));
@@ -135,12 +143,15 @@ export interface ExportAllResult {
   failed: number;
   skipped: number;
   writer: string | null;
+  /** True if any failure was Google rejecting a permission the account hasn't re-granted yet. */
+  reauthRequired: boolean;
+  sampleError: string | null;
 }
 
 /** Export every summary that doesn't yet have a Drive Doc (or re-sync all with force). */
 export async function exportAllSummariesToDrive(force = false): Promise<ExportAllResult> {
   const writer = await getDriveWriter();
-  if (!writer) return { exported: 0, failed: 0, skipped: 0, writer: null };
+  if (!writer) return { exported: 0, failed: 0, skipped: 0, writer: null, reauthRequired: false, sampleError: null };
 
   const supabaseAdmin = getSupabaseAdmin();
   let query = supabaseAdmin.from('meeting_summaries').select('id');
@@ -150,6 +161,8 @@ export async function exportAllSummariesToDrive(force = false): Promise<ExportAl
   let exported = 0;
   let failed = 0;
   let skipped = 0;
+  let reauthRequired = false;
+  let sampleError: string | null = null;
   for (const row of summaries ?? []) {
     try {
       const result = await exportSummaryToDrive(row.id);
@@ -158,7 +171,9 @@ export async function exportAllSummariesToDrive(force = false): Promise<ExportAl
     } catch (error) {
       console.error('Drive export failed for', row.id, error);
       failed += 1;
+      if (isScopeError(error)) reauthRequired = true;
+      if (!sampleError) sampleError = error instanceof Error ? error.message.split('\n')[0] : String(error);
     }
   }
-  return { exported, failed, skipped, writer: writer.email };
+  return { exported, failed, skipped, writer: writer.email, reauthRequired, sampleError };
 }

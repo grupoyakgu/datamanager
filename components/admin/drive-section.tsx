@@ -16,6 +16,8 @@ interface ExportAllResult {
   failed: number;
   skipped: number;
   writer: string | null;
+  reauthRequired: boolean;
+  sampleError: string | null;
 }
 
 export function DriveSection() {
@@ -99,6 +101,12 @@ export function DriveSection() {
                 {t('admin.exportResults')}: {exportResult.exported} {t('admin.exported')}, {exportResult.skipped} {t('admin.skipped')},{' '}
                 {exportResult.failed} {t('admin.failed')}
               </p>
+              {exportResult.reauthRequired && (
+                <p className="text-destructive font-medium">{t('admin.driveReauthRequired')}</p>
+              )}
+              {exportResult.sampleError && !exportResult.reauthRequired && (
+                <p className="text-destructive">{exportResult.sampleError}</p>
+              )}
             </div>
           )}
         </CardContent>

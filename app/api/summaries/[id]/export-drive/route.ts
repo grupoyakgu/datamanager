@@ -1,14 +1,27 @@
 import { NextResponse } from 'next/server';
 import { handleRoute, HttpError } from '@/lib/http';
 import { requireUser, logAudit } from '@/lib/auth';
-import { exportSummaryToDrive } from '@/lib/summaries/drive-export';
+import { exportSummaryToDrive, isScopeError } from '@/lib/summaries/drive-export';
 
 export const dynamic = 'force-dynamic';
 
 export const POST = handleRoute(async (request: Request, { params }: { params: Promise<{ id: string }> }) => {
   const { user } = await requireUser(request);
   const { id } = await params;
-  const result = await exportSummaryToDrive(id);
+
+  let result;
+  try {
+    result = await exportSummaryToDrive(id);
+  } catch (error) {
+    if (isScopeError(error)) {
+      throw new HttpError(
+        409,
+        'Google Drive rejected this with a permissions error. Log out and sign in with Google again, accepting Drive access on the consent screen.'
+      );
+    }
+    throw error;
+  }
+
   if ('skipped' in result) {
     const message =
       result.skipped === 'no_connected_writer'
