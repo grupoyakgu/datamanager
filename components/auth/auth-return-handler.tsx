@@ -47,30 +47,35 @@ export function AuthReturnHandler({ fallback = '/login' }: { fallback?: string }
         return;
       }
 
-      if (code) {
-        const { data, error: exchangeError } = await supabase.auth.exchangeCodeForSession(code);
-        if (exchangeError) {
-          // The client may already have consumed the code via detectSessionInUrl.
-          const { data: existing } = await supabase.auth.getSession();
-          if (existing.session) return finish(existing.session);
-          setError(exchangeError.message);
-          return;
-        }
-        window.history.replaceState({}, '', url.pathname);
-        if (data.session) return finish(data.session);
+      // supabase-js detects ?code= / #access_token on start-up and exchanges it itself
+      // (consuming the one-time PKCE verifier). Wait for that before doing anything.
+      try {
+        await supabase.auth.initialize();
+      } catch (err) {
+        console.error('Auth initialisation failed:', err);
       }
 
       const { data } = await supabase.auth.getSession();
       if (data.session) return finish(data.session);
 
-      // Implicit-flow hash is processed asynchronously by supabase-js; give it a moment.
-      const hasHashTokens = window.location.hash.includes('access_token');
-      window.setTimeout(async () => {
-        if (done.current) return;
-        const { data: later } = await supabase.auth.getSession();
-        if (later.session) return finish(later.session);
-        if (!hasHashTokens) router.replace(fallback);
-      }, hasHashTokens ? 4000 : 800);
+      if (code) {
+        // Detection did not run (e.g. verifier still present); exchange explicitly.
+        const { data: exchanged, error: exchangeError } = await supabase.auth.exchangeCodeForSession(code);
+        if (exchanged.session) {
+          window.history.replaceState({}, '', url.pathname);
+          return finish(exchanged.session);
+        }
+        const { data: again } = await supabase.auth.getSession();
+        if (again.session) return finish(again.session);
+        setError(
+          exchangeError?.message.includes('verifier')
+            ? 'The sign-in could not be completed in this browser tab. Please go back to login and try again.'
+            : exchangeError?.message ?? 'Sign-in failed'
+        );
+        return;
+      }
+
+      if (!done.current) router.replace(fallback);
     };
 
     void run();
