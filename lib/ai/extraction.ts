@@ -76,7 +76,7 @@ export function detectDate(text: string): string | null {
     if (isValidDate(+y, +m, +d)) return `${y}-${m}-${d}`;
   }
 
-  const dmy = text.match(/\b(\d{1,2})[/.](\d{1,2})[/.](\d{4})\b/);
+  const dmy = text.match(/\b(\d{1,2})[/.-](\d{1,2})[/.-](\d{4})\b/);
   if (dmy) {
     const [, d, m, y] = dmy;
     if (isValidDate(+y, +m, +d)) return `${y}-${pad(+m)}-${pad(+d)}`;
@@ -133,21 +133,21 @@ export async function extractFromSummary(params: {
   const { title, content, emailDate, tags, fields } = params;
   const keywordTags = detectTagsByKeyword(`${title}\n${content}`, tags);
 
-  if (!isAiConfigured()) {
-    return {
-      meetingDate: detectDateFromEmail(title, content),
-      meetingTime: null,
-      participants: [],
-      companies: [],
-      topics: [],
-      actionItems: [],
-      decisions: [],
-      tags: keywordTags,
-      language: null,
-      model: 'heuristic',
-      raw: {},
-    };
-  }
+  const heuristicResult = (): ExtractionResult => ({
+    meetingDate: detectDateFromEmail(title, content),
+    meetingTime: null,
+    participants: [],
+    companies: [],
+    topics: [],
+    actionItems: [],
+    decisions: [],
+    tags: keywordTags,
+    language: null,
+    model: 'heuristic',
+    raw: {},
+  });
+
+  if (!isAiConfigured()) return heuristicResult();
 
   const tagDictionary = tags
     .map((t) => (t.aliases.length > 0 ? `${t.name} (aliases: ${t.aliases.join(', ')})` : t.name))
@@ -167,17 +167,26 @@ ${tagDictionary || '(empty)'}
 - language: ISO 639-1 code of the summary text (he, es, en, ...).
 Requested fields: ${fields.join(', ')}. Return empty arrays or null for fields you cannot determine. Do not invent information.`;
 
-  const response = await getOpenAI().chat.completions.create({
-    model: CHAT_MODEL,
-    temperature: 0,
-    response_format: { type: 'json_object' },
-    messages: [
-      { role: 'system', content: system },
-      { role: 'user', content: `Title: ${title}\n\nSummary:\n${content.slice(0, 30_000)}` },
-    ],
-  });
+  let raw: Record<string, unknown>;
+  try {
+    const response = await getOpenAI().chat.completions.create({
+      model: CHAT_MODEL,
+      temperature: 0,
+      response_format: { type: 'json_object' },
+      messages: [
+        { role: 'system', content: system },
+        { role: 'user', content: `Title: ${title}\n\nSummary:\n${content.slice(0, 30_000)}` },
+      ],
+    });
+    raw = JSON.parse(response.choices[0]?.message?.content ?? '{}') as Record<string, unknown>;
+  } catch (aiError) {
+    // A billing/rate-limit/network failure shouldn't stop tagging, folder
+    // placement, completeness scoring or Drive export from still running
+    // on whatever heuristics can find.
+    console.error('OpenAI extraction failed, falling back to heuristics:', aiError);
+    return heuristicResult();
+  }
 
-  const raw = JSON.parse(response.choices[0]?.message?.content ?? '{}') as Record<string, unknown>;
   const allowedTagNames = new Set(tags.map((t) => t.name.toLowerCase()));
   const aiTags = asStringArray(raw.tags)
     .map((name) => tags.find((t) => t.name.toLowerCase() === name.toLowerCase())?.name)
