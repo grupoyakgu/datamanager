@@ -3,12 +3,14 @@ import type { SummaryView } from '@/types/database';
 
 export const SUMMARY_SELECT = `
   id, title, content, meeting_date, meeting_time, source, completeness_score, missing_data,
-  language, processing_status, processing_error, drive_doc_id, drive_sync_error, created_at, updated_at,
+  language, processing_status, processing_error, drive_doc_id, drive_sync_error, needs_folder_review,
+  created_at, updated_at,
   email_from, email_subject, email_received_at,
   folder:folders ( id, name ),
   meeting_summary_tags ( tags ( id, name ) ),
   extracted_data ( participants, companies, topics, action_items, decisions ),
-  created_by_user:users!meeting_summaries_created_by_fkey ( id, name, email )
+  created_by_user:users!meeting_summaries_created_by_fkey ( id, name, email ),
+  summary_attachments ( id, filename, drive_file_id )
 `;
 
 interface RawSummary {
@@ -25,6 +27,7 @@ interface RawSummary {
   processing_error: string | null;
   drive_doc_id: string | null;
   drive_sync_error: string | null;
+  needs_folder_review: boolean;
   created_at: string;
   updated_at: string;
   email_from: string | null;
@@ -37,6 +40,7 @@ interface RawSummary {
     | { participants: string[]; companies: string[]; topics: string[]; action_items: string[]; decisions: string[] }[]
     | null;
   created_by_user: { id: string; name: string | null; email: string } | { id: string; name: string | null; email: string }[] | null;
+  summary_attachments: { id: string; filename: string; drive_file_id: string | null }[] | null;
 }
 
 function one<T>(value: T | T[] | null): T | null {
@@ -61,6 +65,12 @@ export function toSummaryView(raw: unknown, favoriteIds: Set<string> = new Set()
     processing_error: row.processing_error,
     drive_doc_url: row.drive_doc_id ? `https://docs.google.com/document/d/${row.drive_doc_id}/edit` : null,
     drive_sync_error: row.drive_sync_error,
+    needs_folder_review: row.needs_folder_review ?? false,
+    attachments: (row.summary_attachments ?? []).map((a) => ({
+      id: a.id,
+      filename: a.filename,
+      driveUrl: a.drive_file_id ? `https://drive.google.com/file/d/${a.drive_file_id}/view` : null,
+    })),
     created_at: row.created_at,
     updated_at: row.updated_at,
     email_from: row.email_from,

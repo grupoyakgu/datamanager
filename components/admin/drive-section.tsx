@@ -26,6 +26,7 @@ export function DriveSection() {
   const invalidate = useInvalidateAdmin();
   const invalidateSummaries = useInvalidateSummaries();
   const [root, setRoot] = useState<string | null>(null);
+  const [writerEmail, setWriterEmail] = useState<string | null>(null);
   const [status, setStatus] = useState<string | null>(null);
   const [exporting, setExporting] = useState(false);
   const [exportResult, setExportResult] = useState<ExportAllResult | null>(null);
@@ -35,6 +36,19 @@ export function DriveSection() {
     setStatus(null);
     try {
       await api.patch('/api/admin/settings', { drive_root_folder_id: (root ?? settings?.drive_root_folder_id ?? 'root').trim() || 'root' });
+      invalidate('admin-settings');
+      setStatus(t('common.saved'));
+    } catch (err) {
+      setStatus(err instanceof Error ? err.message : t('common.error'));
+    }
+  };
+
+  const saveWriter = async () => {
+    setStatus(null);
+    try {
+      const email = (writerEmail ?? settings?.drive_writer_email ?? '').trim();
+      if (!email) return;
+      await api.patch('/api/admin/settings', { drive_writer_email: email });
       invalidate('admin-settings');
       setStatus(t('common.saved'));
     } catch (err) {
@@ -60,6 +74,20 @@ export function DriveSection() {
 
   return (
     <div className="space-y-6">
+      <Card>
+        <CardContent className="pt-5 space-y-3 max-w-xl">
+          <div className="space-y-1">
+            <Label>{t('admin.driveWriter')}</Label>
+            <Input value={writerEmail ?? settings.drive_writer_email} onChange={(e) => setWriterEmail(e.target.value)} />
+            <p className="text-xs text-muted-foreground">{t('admin.driveWriterHint')}</p>
+          </div>
+          <div className="flex items-center gap-3">
+            <Button onClick={saveWriter}>{t('common.save')}</Button>
+            {status && <span className="text-sm text-muted-foreground">{status}</span>}
+          </div>
+        </CardContent>
+      </Card>
+
       <Card>
         <CardContent className="pt-5 space-y-3 max-w-xl">
           <div className="space-y-1">

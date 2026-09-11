@@ -2,6 +2,13 @@ import { googleFetch } from './oauth';
 
 const GMAIL_BASE = 'https://gmail.googleapis.com/gmail/v1/users/me';
 
+export interface GmailAttachment {
+  attachmentId: string;
+  filename: string;
+  mimeType: string;
+  size: number;
+}
+
 export interface GmailMessage {
   id: string;
   threadId: string;
@@ -11,11 +18,13 @@ export interface GmailMessage {
   to: string;
   date: string | null;
   bodyText: string;
+  attachments: GmailAttachment[];
 }
 
 interface GmailPart {
+  filename?: string;
   mimeType?: string;
-  body?: { data?: string; size?: number };
+  body?: { data?: string; size?: number; attachmentId?: string };
   parts?: GmailPart[];
 }
 
@@ -57,6 +66,20 @@ function collectBodies(part: GmailPart | undefined, out: { text: string[]; html:
   for (const child of part.parts ?? []) collectBodies(child, out);
 }
 
+/** Attachment parts have a non-empty filename and reference their bytes by attachmentId. */
+function collectAttachments(part: GmailPart | undefined, out: GmailAttachment[]) {
+  if (!part) return;
+  if (part.filename && part.body?.attachmentId) {
+    out.push({
+      attachmentId: part.body.attachmentId,
+      filename: part.filename,
+      mimeType: part.mimeType || 'application/octet-stream',
+      size: part.body.size ?? 0,
+    });
+  }
+  for (const child of part.parts ?? []) collectAttachments(child, out);
+}
+
 /** Build a Gmail search query for summary emails. Gmail search is case-insensitive. */
 export function buildSummaryQuery(keywords: string[], lookbackDays: number): string {
   const subject = keywords.map((k) => `subject:"${k.replace(/"/g, '')}"`).join(' OR ');
@@ -88,6 +111,9 @@ export async function getMessage(userId: string, messageId: string): Promise<Gma
   collectBodies(raw.payload, bodies);
   const bodyText = bodies.text.length > 0 ? bodies.text.join('\n').trim() : htmlToText(bodies.html.join('\n'));
 
+  const attachments: GmailAttachment[] = [];
+  collectAttachments(raw.payload, attachments);
+
   return {
     id: raw.id,
     threadId: raw.threadId,
@@ -97,7 +123,17 @@ export async function getMessage(userId: string, messageId: string): Promise<Gma
     to: header('To'),
     date: raw.internalDate ? new Date(Number(raw.internalDate)).toISOString() : null,
     bodyText,
+    attachments,
   };
+}
+
+/** Download one attachment's raw bytes, using the mailbox that received the email. */
+export async function getAttachmentData(userId: string, messageId: string, attachmentId: string): Promise<Buffer> {
+  const res = await googleFetch<{ data: string; size: number }>(
+    userId,
+    `${GMAIL_BASE}/messages/${messageId}/attachments/${attachmentId}`
+  );
+  return Buffer.from(res.data.replace(/-/g, '+').replace(/_/g, '/'), 'base64');
 }
 
 export interface OutgoingEmail {

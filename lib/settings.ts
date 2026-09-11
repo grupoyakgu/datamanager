@@ -16,6 +16,8 @@ export interface AppSettings {
   completeness_weights: CompletenessWeights;
   extraction_fields: string[];
   drive_root_folder_id: string;
+  /** The single Google account whose Drive holds every exported summary and attachment. */
+  drive_writer_email: string;
 }
 
 export const DEFAULT_SETTINGS: AppSettings = {
@@ -41,6 +43,7 @@ export const DEFAULT_SETTINGS: AppSettings = {
     'tags',
   ],
   drive_root_folder_id: 'root',
+  drive_writer_email: 'koby@grupoyakgu.es',
 };
 
 export const SETTING_KEYS = Object.keys(DEFAULT_SETTINGS) as (keyof AppSettings)[];

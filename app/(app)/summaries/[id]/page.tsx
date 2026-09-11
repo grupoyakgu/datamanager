@@ -2,7 +2,8 @@
 
 import { use, useState } from 'react';
 import Link from 'next/link';
-import { ArrowLeft, Calendar, Users, Tag as TagIcon, Folder, Mail, RefreshCw, Star, Clock, Pencil, HardDriveUpload, ExternalLink } from 'lucide-react';
+import { useRouter } from 'next/navigation';
+import { ArrowLeft, Calendar, Users, Tag as TagIcon, Folder, Mail, RefreshCw, Star, Clock, Pencil, HardDriveUpload, ExternalLink, Trash2, Paperclip, AlertTriangle } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -16,6 +17,7 @@ import { LinkifiedText } from '@/components/summaries/linkified-text';
 import { formatDate } from '@/components/summaries/summary-card';
 import { EmptyState } from '@/components/layout/page-header';
 import { useFolders, useSummary, useTags, useToggleFavorite, useInvalidateSummaries } from '@/hooks/use-api';
+import { useUser } from '@/hooks/use-user';
 import { api } from '@/lib/api-client';
 import { useT } from '@/lib/i18n/context';
 import { cn } from '@/lib/utils';
@@ -53,6 +55,8 @@ function toLines(value: string): string[] {
 export default function SummaryDetailPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = use(params);
   const t = useT();
+  const router = useRouter();
+  const { user } = useUser();
   const { data: summary, isLoading, error } = useSummary(id);
   const { data: folders } = useFolders();
   const { data: tags } = useTags();
@@ -65,6 +69,7 @@ export default function SummaryDetailPage({ params }: { params: Promise<{ id: st
   const [detailsForm, setDetailsForm] = useState<DetailsForm | null>(null);
   const [savingDetails, setSavingDetails] = useState(false);
   const [exportingDrive, setExportingDrive] = useState(false);
+  const [deleting, setDeleting] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
 
   if (isLoading) return <p className="text-muted-foreground">{t('common.loading')}</p>;
@@ -104,6 +109,19 @@ export default function SummaryDetailPage({ params }: { params: Promise<{ id: st
       setMessage(err instanceof Error ? err.message : t('common.error'));
     } finally {
       setExportingDrive(false);
+    }
+  };
+
+  const deleteSummary = async () => {
+    if (!confirm(t('summaries.confirmDelete'))) return;
+    setDeleting(true);
+    try {
+      await api.delete(`/api/summaries/${summary.id}`);
+      invalidate();
+      router.push('/summaries');
+    } catch (err) {
+      setMessage(err instanceof Error ? err.message : t('common.error'));
+      setDeleting(false);
     }
   };
 
@@ -172,6 +190,12 @@ export default function SummaryDetailPage({ params }: { params: Promise<{ id: st
               <Mail size={16} className="mr-1" />
               {t('summaries.sendByEmail')}
             </Button>
+            {user?.role === 'admin' && (
+              <Button variant="outline" className="text-destructive hover:text-destructive" onClick={deleteSummary} disabled={deleting}>
+                <Trash2 size={16} className="mr-1" />
+                {deleting ? t('common.loading') : t('common.delete')}
+              </Button>
+            )}
           </div>
         </div>
 
@@ -208,6 +232,12 @@ export default function SummaryDetailPage({ params }: { params: Promise<{ id: st
           </Badge>
         )}
         {summary.processing_status === 'pending' && <Badge variant="warning">{t('summaries.pending')}</Badge>}
+        {summary.needs_folder_review && (
+          <div className="flex items-start gap-2 rounded-md border border-amber-300 bg-amber-50 dark:bg-amber-950/30 p-3 text-sm text-amber-800 dark:text-amber-200">
+            <AlertTriangle size={16} className="mt-0.5 shrink-0" />
+            <span>{t('summaries.needsFolderReview')}</span>
+          </div>
+        )}
         {message && <p className="text-xs text-muted-foreground">{message}</p>}
       </header>
 
@@ -385,6 +415,30 @@ export default function SummaryDetailPage({ params }: { params: Promise<{ id: st
                 </div>
               )}
               {summary.drive_sync_error && <p className="text-xs text-destructive">{summary.drive_sync_error}</p>}
+              {summary.attachments.length > 0 && (
+                <div className="pt-2 border-t border-border space-y-1">
+                  <span className="text-muted-foreground">{t('summaries.attachments')}</span>
+                  <ul className="space-y-1">
+                    {summary.attachments.map((attachment) => (
+                      <li key={attachment.id} className="flex items-center gap-1.5 text-xs">
+                        <Paperclip size={12} className="shrink-0 text-muted-foreground" />
+                        {attachment.driveUrl ? (
+                          <a
+                            href={attachment.driveUrl}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="text-primary hover:underline truncate"
+                          >
+                            {attachment.filename}
+                          </a>
+                        ) : (
+                          <span className="truncate text-muted-foreground">{attachment.filename}</span>
+                        )}
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              )}
             </CardContent>
           </Card>
         </aside>

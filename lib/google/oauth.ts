@@ -154,5 +154,7 @@ export async function googleFetch<T>(userId: string, url: string, init: RequestI
   if (!response.ok) {
     throw new Error(`Google API ${response.status}: ${(await response.text()).slice(0, 300)}`);
   }
-  return response.json() as Promise<T>;
+  if (response.status === 204) return undefined as T;
+  const text = await response.text();
+  return (text ? JSON.parse(text) : undefined) as T;
 }

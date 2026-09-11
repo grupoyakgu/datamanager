@@ -129,6 +129,43 @@ ${params.text}
 }
 
 /**
+ * Upload a file as its native type (not converted to a Google Doc) — used
+ * for email attachments. Builds the multipart body as bytes so binary
+ * content survives intact; pass `fileId` to replace an existing file's
+ * content instead of creating a new one.
+ */
+export async function uploadFile(
+  userId: string,
+  params: { fileId?: string; name: string; mimeType: string; parents?: string[]; data: Buffer }
+): Promise<{ id: string }> {
+  const boundary = `driveUpload${Math.random().toString(36).slice(2)}`;
+  const metadata: Record<string, unknown> = { name: params.name };
+  if (!params.fileId && params.parents) metadata.parents = params.parents;
+
+  const body = Buffer.concat([
+    Buffer.from(`--${boundary}\r\nContent-Type: application/json; charset=UTF-8\r\n\r\n${JSON.stringify(metadata)}\r\n`, 'utf8'),
+    Buffer.from(`--${boundary}\r\nContent-Type: ${params.mimeType}\r\n\r\n`, 'utf8'),
+    params.data,
+    Buffer.from(`\r\n--${boundary}--`, 'utf8'),
+  ]);
+
+  const url = params.fileId
+    ? `https://www.googleapis.com/upload/drive/v3/files/${params.fileId}?uploadType=multipart&supportsAllDrives=true&fields=id`
+    : `https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart&supportsAllDrives=true&fields=id`;
+
+  return googleFetch<{ id: string }>(userId, url, {
+    method: params.fileId ? 'PATCH' : 'POST',
+    headers: { 'Content-Type': `multipart/related; boundary=${boundary}` },
+    body,
+  });
+}
+
+/** Permanently delete a file or folder (not just move it to trash). */
+export async function deleteFile(userId: string, fileId: string): Promise<void> {
+  await googleFetch<void>(userId, `${DRIVE_BASE}/files/${fileId}?supportsAllDrives=true`, { method: 'DELETE' });
+}
+
+/**
  * Make a file's Drive parents match `desiredParents` exactly, adding and
  * removing only what's needed. Used to move an exported summary between tag
  * folders when its tags change, without duplicating or losing it elsewhere.

@@ -107,6 +107,8 @@ export interface SummaryView {
   processing_error: string | null;
   drive_doc_url: string | null;
   drive_sync_error: string | null;
+  needs_folder_review: boolean;
+  attachments: { id: string; filename: string; driveUrl: string | null }[];
   created_at: string;
   updated_at: string;
   email_from: string | null;

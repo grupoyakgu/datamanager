@@ -62,7 +62,23 @@ export async function ingestGmailMessage(userId: string, message: GmailMessage, 
     if (error.code === '23505') return null;
     throw new Error(error.message);
   }
-  return inserted.id as string;
+
+  const summaryId = inserted.id as string;
+  if (message.attachments.length > 0) {
+    const { error: attachmentError } = await supabaseAdmin.from('summary_attachments').insert(
+      message.attachments.map((attachment) => ({
+        summary_id: summaryId,
+        gmail_message_id: message.id,
+        gmail_attachment_id: attachment.attachmentId,
+        ingested_by: userId,
+        filename: attachment.filename,
+        mime_type: attachment.mimeType,
+        size_bytes: attachment.size,
+      }))
+    );
+    if (attachmentError) console.error('Failed to record attachments for summary', summaryId, attachmentError);
+  }
+  return summaryId;
 }
 
 export async function syncUser(userId: string): Promise<SyncResult> {

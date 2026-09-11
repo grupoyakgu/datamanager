@@ -4,7 +4,7 @@ import { requireUser, logAudit } from '@/lib/auth';
 import { getSupabaseAdmin } from '@/lib/supabase';
 import { getSummaryById } from '@/lib/summaries/repository';
 import { recomputeCompleteness } from '@/lib/summaries/process';
-import { exportSummaryToDrive } from '@/lib/summaries/drive-export';
+import { deleteSummaryFromDrive, exportSummaryToDrive } from '@/lib/summaries/drive-export';
 
 export const dynamic = 'force-dynamic';
 
@@ -114,6 +114,15 @@ export const DELETE = handleRoute(async (request: Request, { params }: Params) =
   const { user } = await requireUser(request);
   const { id } = await params;
   if (user.role !== 'admin') throw new HttpError(403, 'Only admins can delete summaries');
+
+  // Best-effort: remove the exported Doc and any attachment files from Drive
+  // before deleting the record, so a re-sync doesn't leave orphaned files.
+  try {
+    await deleteSummaryFromDrive(id);
+  } catch (driveError) {
+    console.error('Failed to remove Drive files for summary', id, driveError);
+  }
+
   const { error } = await getSupabaseAdmin().from('meeting_summaries').delete().eq('id', id);
   if (error) throw new Error(error.message);
   await logAudit(user.id, 'summary.deleted', 'meeting_summary', id);
