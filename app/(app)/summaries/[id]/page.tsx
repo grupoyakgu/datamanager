@@ -70,7 +70,7 @@ export default function SummaryDetailPage({ params }: { params: Promise<{ id: st
   const [savingDetails, setSavingDetails] = useState(false);
   const [exportingDrive, setExportingDrive] = useState(false);
   const [deleting, setDeleting] = useState(false);
-  const [message, setMessage] = useState<string | null>(null);
+  const [message, setMessage] = useState<{ text: string; error: boolean } | null>(null);
 
   if (isLoading) return <p className="text-muted-foreground">{t('common.loading')}</p>;
   if (error || !summary) return <EmptyState>{t('summaries.notFound')}</EmptyState>;
@@ -79,10 +79,10 @@ export default function SummaryDetailPage({ params }: { params: Promise<{ id: st
     try {
       await api.patch<SummaryView>(`/api/summaries/${summary.id}`, patch);
       invalidate();
-      setMessage(t('common.saved'));
+      setMessage({ text: t('common.saved'), error: false });
       setTimeout(() => setMessage(null), 1500);
     } catch (err) {
-      setMessage(err instanceof Error ? err.message : t('common.error'));
+      setMessage({ text: err instanceof Error ? err.message : t('common.error'), error: true });
     }
   };
 
@@ -92,7 +92,7 @@ export default function SummaryDetailPage({ params }: { params: Promise<{ id: st
       await api.post(`/api/summaries/${summary.id}/reprocess`);
       invalidate();
     } catch (err) {
-      setMessage(err instanceof Error ? err.message : t('common.error'));
+      setMessage({ text: err instanceof Error ? err.message : t('common.error'), error: true });
     } finally {
       setReprocessing(false);
     }
@@ -103,10 +103,10 @@ export default function SummaryDetailPage({ params }: { params: Promise<{ id: st
     try {
       await api.post(`/api/summaries/${summary.id}/export-drive`);
       invalidate();
-      setMessage(t('common.saved'));
+      setMessage({ text: t('common.saved'), error: false });
       setTimeout(() => setMessage(null), 1500);
     } catch (err) {
-      setMessage(err instanceof Error ? err.message : t('common.error'));
+      setMessage({ text: err instanceof Error ? err.message : t('common.error'), error: true });
     } finally {
       setExportingDrive(false);
     }
@@ -120,7 +120,7 @@ export default function SummaryDetailPage({ params }: { params: Promise<{ id: st
       invalidate();
       router.push('/summaries');
     } catch (err) {
-      setMessage(err instanceof Error ? err.message : t('common.error'));
+      setMessage({ text: err instanceof Error ? err.message : t('common.error'), error: true });
       setDeleting(false);
     }
   };
@@ -151,10 +151,10 @@ export default function SummaryDetailPage({ params }: { params: Promise<{ id: st
       });
       invalidate();
       setEditingDetails(false);
-      setMessage(t('common.saved'));
+      setMessage({ text: t('common.saved'), error: false });
       setTimeout(() => setMessage(null), 1500);
     } catch (err) {
-      setMessage(err instanceof Error ? err.message : t('common.error'));
+      setMessage({ text: err instanceof Error ? err.message : t('common.error'), error: true });
     } finally {
       setSavingDetails(false);
     }
@@ -238,7 +238,9 @@ export default function SummaryDetailPage({ params }: { params: Promise<{ id: st
             <span>{t('summaries.needsFolderReview')}</span>
           </div>
         )}
-        {message && <p className="text-xs text-muted-foreground">{message}</p>}
+        {message && (
+          <p className={cn('text-xs', message.error ? 'text-destructive font-medium' : 'text-emerald-600')}>{message.text}</p>
+        )}
       </header>
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">

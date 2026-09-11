@@ -38,18 +38,70 @@ export function detectTagsByKeyword(text: string, tags: TagDefinition[]): string
   return found;
 }
 
-const DATE_PATTERNS: RegExp[] = [
-  /\b(\d{4})-(\d{2})-(\d{2})\b/, // 2026-09-09
-  /\b(\d{1,2})[/.](\d{1,2})[/.](\d{4})\b/, // 09/09/2026 or 09.09.2026
-];
+const MONTH_NAMES: Record<string, number> = {
+  enero: 1, ene: 1, january: 1, jan: 1,
+  febrero: 2, feb: 2, february: 2,
+  marzo: 3, mar: 3, march: 3,
+  abril: 4, abr: 4, april: 4, apr: 4,
+  mayo: 5, may: 5,
+  junio: 6, jun: 6, june: 6,
+  julio: 7, jul: 7, july: 7,
+  agosto: 8, ago: 8, august: 8, aug: 8,
+  septiembre: 9, setiembre: 9, sep: 9, sept: 9, september: 9,
+  octubre: 10, oct: 10, october: 10,
+  noviembre: 11, nov: 11, november: 11,
+  diciembre: 12, dic: 12, december: 12, dec: 12,
+};
 
-/** Fallback date detection from subject or text when AI is unavailable. */
+function isValidDate(year: number, month: number, day: number): boolean {
+  if (year < 2000 || year > 2099 || month < 1 || month > 12 || day < 1 || day > 31) return false;
+  const date = new Date(Date.UTC(year, month - 1, day));
+  return date.getUTCFullYear() === year && date.getUTCMonth() === month - 1 && date.getUTCDate() === day;
+}
+
+function pad(n: number): string {
+  return String(n).padStart(2, '0');
+}
+
+/**
+ * Best-effort date extraction from free text, used both as the no-AI
+ * fallback and to fill in when the model doesn't find a date. Tries, in
+ * order: ISO, numeric DD/MM/YYYY or DD.MM.YYYY, "10 de septiembre de 2026"
+ * (Spanish), "September 10, 2026" and "10 September 2026" (English/mixed).
+ */
 export function detectDate(text: string): string | null {
-  const iso = text.match(DATE_PATTERNS[0]);
-  if (iso) return `${iso[1]}-${iso[2]}-${iso[3]}`;
-  const dmy = text.match(DATE_PATTERNS[1]);
-  if (dmy) return `${dmy[3]}-${dmy[2].padStart(2, '0')}-${dmy[1].padStart(2, '0')}`;
+  const iso = text.match(/\b(\d{4})-(\d{2})-(\d{2})\b/);
+  if (iso) {
+    const [, y, m, d] = iso;
+    if (isValidDate(+y, +m, +d)) return `${y}-${m}-${d}`;
+  }
+
+  const dmy = text.match(/\b(\d{1,2})[/.](\d{1,2})[/.](\d{4})\b/);
+  if (dmy) {
+    const [, d, m, y] = dmy;
+    if (isValidDate(+y, +m, +d)) return `${y}-${pad(+m)}-${pad(+d)}`;
+  }
+
+  const dayMonthYear = text.match(/\b(\d{1,2})\s+(?:de\s+|de\s*)?([a-zA-Zá-úñ]+)\s+(?:de\s+|del\s+)?(\d{4})\b/i);
+  if (dayMonthYear) {
+    const [, d, monthName, y] = dayMonthYear;
+    const month = MONTH_NAMES[monthName.toLowerCase()];
+    if (month && isValidDate(+y, month, +d)) return `${y}-${pad(month)}-${pad(+d)}`;
+  }
+
+  const monthDayYear = text.match(/\b([a-zA-Z]+)\s+(\d{1,2}),?\s+(\d{4})\b/);
+  if (monthDayYear) {
+    const [, monthName, d, y] = monthDayYear;
+    const month = MONTH_NAMES[monthName.toLowerCase()];
+    if (month && isValidDate(+y, month, +d)) return `${y}-${pad(month)}-${pad(+d)}`;
+  }
+
   return null;
+}
+
+/** Try the subject first (often the most deliberate date signal), then the body. */
+export function detectDateFromEmail(subject: string, body: string): string | null {
+  return detectDate(subject) ?? detectDate(body);
 }
 
 function asStringArray(value: unknown): string[] {
@@ -83,7 +135,7 @@ export async function extractFromSummary(params: {
 
   if (!isAiConfigured()) {
     return {
-      meetingDate: detectDate(title) ?? detectDate(content),
+      meetingDate: detectDateFromEmail(title, content),
       meetingTime: null,
       participants: [],
       companies: [],
@@ -134,7 +186,7 @@ Requested fields: ${fields.join(', ')}. Return empty arrays or null for fields y
   const mergedTags = Array.from(new Set([...keywordTags, ...aiTags]));
 
   return {
-    meetingDate: asDate(raw.meeting_date) ?? detectDate(title),
+    meetingDate: asDate(raw.meeting_date) ?? detectDateFromEmail(title, content),
     meetingTime: asTime(raw.meeting_time),
     participants: asStringArray(raw.participants),
     companies: asStringArray(raw.companies),

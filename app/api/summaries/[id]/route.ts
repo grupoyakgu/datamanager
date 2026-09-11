@@ -92,7 +92,14 @@ export const PATCH = handleRoute(async (request: Request, { params }: Params) =>
     body.meetingDate !== undefined ||
     body.meetingTime !== undefined ||
     Object.keys(extractedPatch).length > 0;
-  if (shouldRecompute) await recomputeCompleteness(id);
+  if (shouldRecompute) {
+    try {
+      await recomputeCompleteness(id);
+    } catch (recomputeError) {
+      // Don't let a scoring hiccup hide a field save that already succeeded.
+      console.error('recomputeCompleteness failed for', id, recomputeError);
+    }
+  }
 
   if (Array.isArray(body.tagIds)) {
     // Tags decide which Drive folder(s) the exported Doc lives in; move it now.
