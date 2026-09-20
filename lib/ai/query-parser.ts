@@ -1,4 +1,4 @@
-import { CHAT_MODEL, getOpenAI, isAiConfigured } from './openai';
+import { generateJson, isAiConfigured } from './gemini';
 
 export interface ParsedQuery {
   semanticQuery: string;
@@ -70,16 +70,7 @@ Return ONLY JSON with keys:
 The question may be in Hebrew, Spanish or English.`;
 
   try {
-    const response = await getOpenAI().chat.completions.create({
-      model: CHAT_MODEL,
-      temperature: 0,
-      response_format: { type: 'json_object' },
-      messages: [
-        { role: 'system', content: system },
-        { role: 'user', content: question },
-      ],
-    });
-    const raw = JSON.parse(response.choices[0]?.message?.content ?? '{}') as Record<string, unknown>;
+    const raw = await generateJson(system, question);
     const period = resolvePeriod(typeof raw.period === 'string' ? raw.period : null, now);
     const validDate = (v: unknown) => (typeof v === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(v) ? v : null);
     const tags = Array.isArray(raw.tags)

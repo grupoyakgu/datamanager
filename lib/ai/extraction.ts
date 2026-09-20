@@ -1,4 +1,4 @@
-import { CHAT_MODEL, getOpenAI, isAiConfigured } from './openai';
+import { CHAT_MODEL, generateJson, isAiConfigured } from './gemini';
 
 export interface TagDefinition {
   id: string;
@@ -169,21 +169,12 @@ Requested fields: ${fields.join(', ')}. Return empty arrays or null for fields y
 
   let raw: Record<string, unknown>;
   try {
-    const response = await getOpenAI().chat.completions.create({
-      model: CHAT_MODEL,
-      temperature: 0,
-      response_format: { type: 'json_object' },
-      messages: [
-        { role: 'system', content: system },
-        { role: 'user', content: `Title: ${title}\n\nSummary:\n${content.slice(0, 30_000)}` },
-      ],
-    });
-    raw = JSON.parse(response.choices[0]?.message?.content ?? '{}') as Record<string, unknown>;
+    raw = await generateJson(system, `Title: ${title}\n\nSummary:\n${content.slice(0, 30_000)}`);
   } catch (aiError) {
     // A billing/rate-limit/network failure shouldn't stop tagging, folder
     // placement, completeness scoring or Drive export from still running
     // on whatever heuristics can find.
-    console.error('OpenAI extraction failed, falling back to heuristics:', aiError);
+    console.error('Gemini extraction failed, falling back to heuristics:', aiError);
     return heuristicResult();
   }
 

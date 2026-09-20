@@ -13,7 +13,7 @@ Grupo Yakgu Data Manager is the central data management platform for Grupo Yakgu
 - **Database**: Supabase (PostgreSQL)
 - **Authentication**: Supabase Auth (Google OAuth); callback handled at `app/auth/callback`
 - **State Management**: React Query + React Context
-- **AI/Extraction**: OpenAI API
+- **AI/Extraction**: Google Gemini API (plain `fetch`, no SDK — see `lib/ai/gemini.ts`)
 
 ## Conventions
 
@@ -57,7 +57,7 @@ NEXT_PUBLIC_SUPABASE_ANON_KEY=your_anon_key
 SUPABASE_SERVICE_ROLE_KEY=your_service_key
 GOOGLE_CLIENT_ID=oauth_client_id
 GOOGLE_CLIENT_SECRET=oauth_client_secret
-OPENAI_API_KEY=your_openai_key
+GEMINI_API_KEY=your_gemini_api_key
 NEXT_PUBLIC_APP_URL=http://localhost:3000
 CRON_SECRET=random_string
 ```

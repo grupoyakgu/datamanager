@@ -1,6 +1,6 @@
 import { getSupabaseAdmin } from './supabase';
 import { embedText } from './ai/embeddings';
-import { isAiConfigured } from './ai/openai';
+import { isAiConfigured } from './ai/gemini';
 import { parseNaturalQuery, type ParsedQuery } from './ai/query-parser';
 import { getFavoriteIds, SUMMARY_SELECT, toSummaryView } from './summaries/repository';
 import type { SummaryView } from '@/types/database';

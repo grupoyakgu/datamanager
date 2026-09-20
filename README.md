@@ -6,7 +6,7 @@ analysed with AI, organised into folders and tags, and searchable with natural
 language. A Google Drive browser and an admin area complete the MVP.
 
 Built with Next.js (App Router), TypeScript, Tailwind CSS v4, Supabase
-(Postgres + Auth + pgvector) and the OpenAI API.
+(Postgres + Auth + pgvector) and the Google Gemini API.
 
 ## Features
 
@@ -30,7 +30,7 @@ Built with Next.js (App Router), TypeScript, Tailwind CSS v4, Supabase
 
 ```bash
 npm install
-cp .env.example .env.local   # fill in Supabase, Google and OpenAI values
+cp .env.example .env.local   # fill in Supabase, Google and Gemini values
 npm run dev
 ```
 
@@ -56,7 +56,7 @@ app/api/         Route handlers (Bearer-token auth via lib/auth.ts)
 app/login, app/auth/callback   Sign-in and OAuth token capture
 components/      UI primitives, layout chrome, summary and admin components
 hooks/           useUser, data hooks (React Query)
-lib/ai/          OpenAI client, extraction, embeddings, natural-language query parser
+lib/ai/          Gemini client, extraction, embeddings, natural-language query parser
 lib/google/      OAuth token refresh, Gmail and Drive clients (REST via fetch)
 lib/summaries/   Repository/view mapping, processing pipeline, Gmail sync
 lib/i18n/        English/Spanish dictionaries and context
