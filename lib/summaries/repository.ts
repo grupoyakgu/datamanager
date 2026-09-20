@@ -4,7 +4,7 @@ import type { SummaryView } from '@/types/database';
 export const SUMMARY_SELECT = `
   id, title, content, meeting_date, meeting_time, source, completeness_score, missing_data,
   language, processing_status, processing_error, drive_doc_id, drive_sync_error, needs_folder_review,
-  drive_folder_override,
+  drive_folder_override, drive_folder_tag_id,
   created_at, updated_at,
   email_from, email_subject, email_received_at,
   folder:folders ( id, name ),
@@ -30,6 +30,7 @@ interface RawSummary {
   drive_sync_error: string | null;
   needs_folder_review: boolean;
   drive_folder_override: string | null;
+  drive_folder_tag_id: string | null;
   created_at: string;
   updated_at: string;
   email_from: string | null;
@@ -73,7 +74,11 @@ export function toSummaryView(raw: unknown, favoriteIds: Set<string> = new Set()
     drive_sync_error: row.drive_sync_error,
     needs_folder_review: row.needs_folder_review ?? false,
     drive_folder_override: row.drive_folder_override,
-    drive_folder_name: row.drive_folder_override || tags[0]?.name || null,
+    drive_folder_name:
+      row.drive_folder_override ||
+      tags.find((t) => t.id === row.drive_folder_tag_id)?.name ||
+      tags[0]?.name ||
+      null,
     ai_extraction_error: extracted?.model === 'heuristic' ? (extracted?.ai_error ?? null) : null,
     attachments: (row.summary_attachments ?? []).map((a) => ({
       id: a.id,

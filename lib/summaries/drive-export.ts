@@ -71,8 +71,11 @@ export async function getDriveWriter(): Promise<{ id: string; email: string } | 
  * Export one summary as a Google Doc directly under the configured Drive
  * root, inside a folder named after either:
  *   1. `drive_folder_override`, when the user has manually moved it, or
- *   2. its first tag (alphabetically, matching the order tags are shown
- *      in the UI) when it has one or more tags.
+ *   2. its "sticky" folder tag (`drive_folder_tag_id`) — the tag that was
+ *      picked (first alphabetically) the last time the folder was resolved.
+ *      Adding more tags alongside it does NOT move the Doc; only once that
+ *      tag is deselected does this fall through to the alphabetically-first
+ *      tag among whatever remains, which then becomes the new sticky tag.
  * The folder is created if it doesn't already exist.
  *
  * A summary with no tags and no manual override has nothing to file
@@ -91,32 +94,42 @@ export async function exportSummaryToDrive(summaryId: string): Promise<DriveExpo
 
   const { data: summary } = await supabaseAdmin
     .from('meeting_summaries')
-    .select('id, title, content, meeting_date, meeting_time, drive_doc_id, drive_file_suffix, drive_folder_override')
+    .select('id, title, content, meeting_date, meeting_time, drive_doc_id, drive_file_suffix, drive_folder_override, drive_folder_tag_id')
     .eq('id', summaryId)
     .maybeSingle();
   if (!summary) return { skipped: 'not_found' };
 
   const [{ data: tagLinks }, { data: extracted }, { data: attachmentRows }] = await Promise.all([
-    supabaseAdmin.from('meeting_summary_tags').select('tags(name)').eq('summary_id', summaryId),
+    supabaseAdmin.from('meeting_summary_tags').select('tags(id, name)').eq('summary_id', summaryId),
     supabaseAdmin.from('extracted_data').select('participants').eq('summary_id', summaryId).maybeSingle(),
     supabaseAdmin
       .from('summary_attachments')
       .select('id, gmail_message_id, gmail_attachment_id, ingested_by, filename, mime_type, drive_file_id')
       .eq('summary_id', summaryId),
   ]);
-  const tagNames = (tagLinks ?? [])
+  const tagRows = (tagLinks ?? [])
     .map((row) => {
-      const tag = row.tags as { name: string } | { name: string }[] | null;
-      return Array.isArray(tag) ? tag[0]?.name : tag?.name;
+      const tag = row.tags as { id: string; name: string } | { id: string; name: string }[] | null;
+      return Array.isArray(tag) ? tag[0] : tag;
     })
-    .filter((name): name is string => !!name)
-    .sort((a, b) => a.localeCompare(b));
+    .filter((t): t is { id: string; name: string } => !!t)
+    .sort((a, b) => a.name.localeCompare(b.name));
+  const tagNames = tagRows.map((t) => t.name);
   const attachments = attachmentRows ?? [];
 
-  const folderName = summary.drive_folder_override || tagNames[0] || null;
+  // The tag that currently owns the folder stays "sticky" across tag edits
+  // (see moveSummaryToDriveFolder/PATCH route); fall back to the
+  // alphabetically-first tag if it's stale or was never set.
+  const stickyTagName = summary.drive_folder_tag_id
+    ? tagRows.find((t) => t.id === summary.drive_folder_tag_id)?.name
+    : undefined;
+  const folderName = summary.drive_folder_override || stickyTagName || tagNames[0] || null;
 
   if (!folderName) {
-    await supabaseAdmin.from('meeting_summaries').update({ needs_folder_review: true }).eq('id', summaryId);
+    await supabaseAdmin
+      .from('meeting_summaries')
+      .update({ needs_folder_review: true, drive_folder_tag_id: null })
+      .eq('id', summaryId);
     return { skipped: 'no_tag' };
   }
 
@@ -193,6 +206,11 @@ export async function exportSummaryToDrive(summaryId: string): Promise<DriveExpo
       }
     }
 
+    // Keep drive_folder_tag_id in sync with whatever tag actually backed this
+    // folder, unless a manual override is active (in which case it's unused
+    // and left as-is, ready to resume once the override is cleared).
+    const resolvedTagId = summary.drive_folder_override ? undefined : (tagRows.find((t) => t.name === folderName)?.id ?? null);
+
     await supabaseAdmin
       .from('meeting_summaries')
       .update({
@@ -201,6 +219,7 @@ export async function exportSummaryToDrive(summaryId: string): Promise<DriveExpo
         drive_sync_error: null,
         drive_file_suffix: suffix ?? null,
         needs_folder_review: false,
+        ...(resolvedTagId !== undefined ? { drive_folder_tag_id: resolvedTagId } : {}),
       })
       .eq('id', summaryId);
 

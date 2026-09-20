@@ -58,7 +58,17 @@ export const PATCH = handleRoute(async (request: Request, { params }: Params) =>
     if (error) throw new Error(error.message);
   }
 
+  // Whether the tag currently backing the Drive folder is still selected
+  // after this edit: if so, saving the tag is all that's needed and the
+  // (slow, Google-API-bound) Drive export is skipped entirely.
+  let driveFolderTagChanged = false;
   if (Array.isArray(body.tagIds)) {
+    const { data: existingSummary } = await supabaseAdmin
+      .from('meeting_summaries')
+      .select('drive_folder_tag_id, drive_folder_override')
+      .eq('id', id)
+      .maybeSingle();
+
     await supabaseAdmin.from('meeting_summary_tags').delete().eq('summary_id', id);
     if (body.tagIds.length > 0) {
       const { error } = await supabaseAdmin
@@ -66,6 +76,10 @@ export const PATCH = handleRoute(async (request: Request, { params }: Params) =>
         .insert(body.tagIds.map((tagId) => ({ summary_id: id, tag_id: tagId })));
       if (error) throw new Error(error.message);
     }
+
+    const stickyTagId = existingSummary?.drive_folder_tag_id ?? null;
+    const hasOverride = !!existingSummary?.drive_folder_override;
+    driveFolderTagChanged = !hasOverride && !(stickyTagId && body.tagIds.includes(stickyTagId));
   }
 
   const extractedPatch: Record<string, unknown> = {};
@@ -101,8 +115,10 @@ export const PATCH = handleRoute(async (request: Request, { params }: Params) =>
     }
   }
 
-  if (Array.isArray(body.tagIds)) {
-    // Tags decide which Drive folder(s) the exported Doc lives in; move it now.
+  if (driveFolderTagChanged) {
+    // The tag driving the Drive folder changed (added the first tag ever,
+    // or the previously-selected one was removed) — move the Doc now.
+    // Just adding another tag alongside the existing one is a no-op here.
     try {
       await exportSummaryToDrive(id);
     } catch (driveError) {
