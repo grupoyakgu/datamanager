@@ -1,6 +1,6 @@
 import { getSupabaseAdmin } from './supabase';
 import { embedText } from './ai/embeddings';
-import { isAiConfigured } from './ai/gemini';
+import { generateText, isAiConfigured } from './ai/gemini';
 import { parseNaturalQuery, type ParsedQuery } from './ai/query-parser';
 import { getFavoriteIds, SUMMARY_SELECT, toSummaryView } from './summaries/repository';
 import type { SummaryView } from '@/types/database';
@@ -24,6 +24,8 @@ export interface SearchResponse {
   total: number;
   mode: 'filter' | 'text' | 'semantic';
   interpreted?: ParsedQuery;
+  /** AI-generated answer in the question's own language, synthesized from the matched summaries. */
+  answer?: string | null;
 }
 
 function tsQuery(text: string): string {
@@ -106,6 +108,36 @@ export async function searchSummaries(filters: SearchFilters, userId: string): P
   };
 }
 
+/**
+ * Ask Gemini to synthesize a short answer from the matched summaries, always
+ * in the language of the question, regardless of what language each summary
+ * was written in (Hebrew, Spanish or English content are all supported).
+ */
+async function generateAnswer(question: string, views: SummaryView[]): Promise<string | null> {
+  if (!isAiConfigured() || views.length === 0) return null;
+
+  const context = views
+    .slice(0, 5)
+    .map((v, i) => {
+      const date = v.meeting_date ? ` (${v.meeting_date})` : '';
+      return `Summary ${i + 1} - "${v.title}"${date}:\n${v.content.slice(0, 1500)}`;
+    })
+    .join('\n\n---\n\n');
+
+  const system = `You answer questions about company meeting summaries for Grupo Yakgu.
+Answer STRICTLY in the same language the user's question is written in (Hebrew, Spanish or English) — regardless of what language the summaries below happen to be written in; translate and synthesize as needed.
+Use ONLY the information in the summaries provided below; never invent anything. If they don't actually answer the question, say so briefly, still in the question's language.
+Be concise (2-5 sentences). When useful, mention which summary title supports a claim.`;
+
+  try {
+    const answer = await generateText(system, `Question: ${question}\n\nSummaries:\n${context}`);
+    return answer.trim() || null;
+  } catch (error) {
+    console.error('Answer generation failed:', error);
+    return null;
+  }
+}
+
 /** Natural-language question → parsed filters → semantic (or text) search. */
 export async function askSummaries(question: string, userId: string, limit = 20): Promise<SearchResponse> {
   const supabaseAdmin = getSupabaseAdmin();
@@ -140,7 +172,8 @@ export async function askSummaries(question: string, userId: string, limit = 20)
       const relevant = matches.filter((m) => m.similarity >= 0.2);
       const views = await loadViews(relevant.map((m) => m.id), userId);
       const withScore = views.map((v) => ({ ...v, similarity: relevant.find((m) => m.id === v.id)?.similarity }));
-      return { results: withScore, total: withScore.length, mode: 'semantic', interpreted: parsed };
+      const answer = await generateAnswer(question, withScore);
+      return { results: withScore, total: withScore.length, mode: 'semantic', interpreted: parsed, answer };
     }
   }
 
@@ -156,5 +189,6 @@ export async function askSummaries(question: string, userId: string, limit = 20)
     },
     userId
   );
-  return { ...textResult, interpreted: parsed };
+  const answer = await generateAnswer(question, textResult.results);
+  return { ...textResult, interpreted: parsed, answer };
 }

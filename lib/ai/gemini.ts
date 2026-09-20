@@ -41,7 +41,12 @@ async function fetchWithRetry(url: string, init: RequestInit): Promise<Response>
   throw lastError ?? new Error('Gemini API request failed');
 }
 
-async function generateContent(system: string, userText: string, temperature = 0): Promise<string> {
+async function generateContent(
+  system: string,
+  userText: string,
+  options: { temperature?: number; json?: boolean } = {}
+): Promise<string> {
+  const { temperature = 0, json = true } = options;
   const apiKey = requireApiKey();
   const response = await fetchWithRetry(`${API_BASE}/models/${CHAT_MODEL}:generateContent`, {
     method: 'POST',
@@ -49,7 +54,7 @@ async function generateContent(system: string, userText: string, temperature = 0
     body: JSON.stringify({
       contents: [{ role: 'user', parts: [{ text: userText }] }],
       systemInstruction: { parts: [{ text: system }] },
-      generationConfig: { temperature, responseMimeType: 'application/json' },
+      generationConfig: { temperature, ...(json ? { responseMimeType: 'application/json' } : {}) },
     }),
   });
   const data = (await response.json()) as GeminiGenerateResponse;
@@ -57,13 +62,18 @@ async function generateContent(system: string, userText: string, temperature = 0
     throw new Error(`Gemini blocked the request: ${data.promptFeedback.blockReason}`);
   }
   const text = data.candidates?.[0]?.content?.parts?.map((p) => p.text ?? '').join('');
-  return text && text.trim() ? text : '{}';
+  return text && text.trim() ? text : json ? '{}' : '';
 }
 
 /** Ask Gemini for a JSON object matching the schema described in `system`. */
 export async function generateJson(system: string, userText: string): Promise<Record<string, unknown>> {
-  const text = await generateContent(system, userText);
+  const text = await generateContent(system, userText, { json: true });
   return JSON.parse(text) as Record<string, unknown>;
+}
+
+/** Ask Gemini for a free-text answer (no JSON schema), e.g. a natural-language answer to a question. */
+export async function generateText(system: string, userText: string, temperature = 0.2): Promise<string> {
+  return generateContent(system, userText, { temperature, json: false });
 }
 
 interface GeminiEmbedResponse {

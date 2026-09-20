@@ -2,7 +2,7 @@
 
 import { Suspense, useEffect, useMemo, useRef, useState } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
-import { Plus } from 'lucide-react';
+import { Plus, Sparkles } from 'lucide-react';
 import { PageHeader, EmptyState } from '@/components/layout/page-header';
 import { SearchBar } from '@/components/summaries/search-bar';
 import { SummaryCard } from '@/components/summaries/summary-card';
@@ -13,6 +13,7 @@ import { Label } from '@/components/ui/label';
 import { Dialog } from '@/components/ui/dialog';
 import { Textarea } from '@/components/ui/textarea';
 import { Badge } from '@/components/ui/badge';
+import { Card, CardContent } from '@/components/ui/card';
 import { useFolders, useSummaries, useTags, useInvalidateSummaries, type SummaryFilters } from '@/hooks/use-api';
 import { api } from '@/lib/api-client';
 import { useT } from '@/lib/i18n/context';
@@ -212,6 +213,20 @@ function SummariesContent() {
               </span>
             )}
           </div>
+        )}
+
+        {askResult?.answer && (
+          <Card className="border-primary/30 bg-primary/5">
+            <CardContent className="pt-4 flex items-start gap-2">
+              <Sparkles size={16} className="mt-0.5 shrink-0 text-primary" />
+              <div className="space-y-1 min-w-0">
+                <p className="text-xs font-medium text-primary">{t('summaries.aiAnswer')}</p>
+                <p className="text-sm whitespace-pre-wrap" dir="auto">
+                  {askResult.answer}
+                </p>
+              </div>
+            </CardContent>
+          </Card>
         )}
 
         {askError && <p className="text-sm text-destructive">{askError}</p>}
