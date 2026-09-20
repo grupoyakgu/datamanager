@@ -151,6 +151,15 @@ export async function uploadFile(
   });
 }
 
+/** Rename a file or folder in place. */
+export async function renameFile(userId: string, fileId: string, name: string): Promise<void> {
+  await googleFetch(userId, `${DRIVE_BASE}/files/${fileId}?supportsAllDrives=true`, {
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ name }),
+  });
+}
+
 /** Permanently delete a file or folder (not just move it to trash). */
 export async function deleteFile(userId: string, fileId: string): Promise<void> {
   await googleFetch<void>(userId, `${DRIVE_BASE}/files/${fileId}?supportsAllDrives=true`, { method: 'DELETE' });

@@ -211,6 +211,11 @@ export const en = {
     originalSenderEmail: 'Original sender email',
     forwardedBy: 'Forwarded by',
     forwardedByEmail: 'Forwarded by (email)',
+    renameItem: 'Rename',
+    comments: 'Comments',
+    noComments: 'No comments yet.',
+    addCommentPlaceholder: 'Add a comment...',
+    addComment: 'Add comment',
   },
   admin: {
     title: 'Admin Dashboard',
@@ -504,6 +509,11 @@ export const es: DeepStringRecord = {
     originalSenderEmail: 'Correo del remitente original',
     forwardedBy: 'Reenviado por',
     forwardedByEmail: 'Reenviado por (correo)',
+    renameItem: 'Renombrar',
+    comments: 'Comentarios',
+    noComments: 'Aún no hay comentarios.',
+    addCommentPlaceholder: 'Añade un comentario...',
+    addComment: 'Añadir comentario',
   },
   admin: {
     title: 'Panel de administración',

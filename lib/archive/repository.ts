@@ -5,7 +5,9 @@ export const ARCHIVE_SELECT = `
   id, title, subject, body_text, is_forward,
   original_sender_name, original_sender_email, forwarded_by_name, forwarded_by_email,
   email_received_at, drive_sync_error, created_at,
-  archive_attachments ( id, filename, mime_type, drive_file_id )
+  archive_attachments ( id, filename, mime_type, drive_file_id ),
+  archive_item_tags ( tags ( id, name ) ),
+  archive_comments ( id, body, created_at, author:users ( id, name, email ) )
 `;
 
 interface RawArchiveItem {
@@ -22,6 +24,19 @@ interface RawArchiveItem {
   drive_sync_error: string | null;
   created_at: string;
   archive_attachments: { id: string; filename: string; mime_type: string; drive_file_id: string | null }[] | null;
+  archive_item_tags: { tags: { id: string; name: string } | { id: string; name: string }[] | null }[] | null;
+  archive_comments:
+    | {
+        id: string;
+        body: string;
+        created_at: string;
+        author: { id: string; name: string | null; email: string } | { id: string; name: string | null; email: string }[] | null;
+      }[]
+    | null;
+}
+
+function one<T>(value: T | T[] | null): T | null {
+  return Array.isArray(value) ? (value[0] ?? null) : value;
 }
 
 export function toArchiveItemView(raw: unknown): ArchiveItemView {
@@ -45,6 +60,13 @@ export function toArchiveItemView(raw: unknown): ArchiveItemView {
       mimeType: a.mime_type,
       driveUrl: a.drive_file_id ? `https://drive.google.com/file/d/${a.drive_file_id}/view` : null,
     })),
+    tags: (row.archive_item_tags ?? [])
+      .map((t) => one(t.tags))
+      .filter((t): t is { id: string; name: string } => !!t)
+      .sort((a, b) => a.name.localeCompare(b.name)),
+    comments: (row.archive_comments ?? [])
+      .map((c) => ({ id: c.id, body: c.body, created_at: c.created_at, author: one(c.author) }))
+      .sort((a, b) => a.created_at.localeCompare(b.created_at)),
   };
 }
 

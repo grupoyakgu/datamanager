@@ -3,8 +3,12 @@ import { getSettings } from '@/lib/settings';
 import { getMessage, listMessageIds, trashMessage, type GmailMessage } from '@/lib/google/gmail';
 import { GoogleAuthError } from '@/lib/google/oauth';
 import { logAudit } from '@/lib/auth';
+import { getActiveTags } from '@/lib/summaries/repository';
+import { detectContentTags } from '@/lib/ai/tag-detection';
 import { parseAddress, parseForward } from './parse-forward';
 import { exportArchiveAttachments } from './drive-export';
+
+type TagRow = { id: string; name: string; aliases: string[] };
 
 export interface ArchiveSyncResult {
   mailbox: string | null;
@@ -64,8 +68,11 @@ async function allAttachmentsSynced(archivedItemId: string): Promise<boolean> {
  * Gmail Trash so the mailbox doesn't pile up — "forward to archive" acts as
  * a one-way "save" action. If any attachment still failed to upload, the
  * email is left in place so a later sync can retry it.
+ *
+ * Tags it with whichever of the application's existing tags the content
+ * matches (see detectContentTags) — never invents new tags.
  */
-export async function ingestArchiveMessage(mailboxUserId: string, message: GmailMessage): Promise<string | null> {
+export async function ingestArchiveMessage(mailboxUserId: string, message: GmailMessage, tags: TagRow[]): Promise<string | null> {
   const supabaseAdmin = getSupabaseAdmin();
   const { data: existing } = await supabaseAdmin.from('archived_items').select('id').eq('gmail_message_id', message.id).limit(1);
   if (existing && existing.length > 0) return null;
@@ -105,6 +112,18 @@ export async function ingestArchiveMessage(mailboxUserId: string, message: Gmail
 
   const archivedItemId = inserted.id as string;
   let readyToDelete = true;
+
+  try {
+    const detectedTagNames = await detectContentTags(`${subject}\n${message.bodyText}`, tags);
+    const tagRows = detectedTagNames.map((name) => tags.find((t) => t.name === name)).filter((t): t is TagRow => !!t);
+    if (tagRows.length > 0) {
+      await supabaseAdmin
+        .from('archive_item_tags')
+        .insert(tagRows.map((t) => ({ archived_item_id: archivedItemId, tag_id: t.id })));
+    }
+  } catch (tagError) {
+    console.error('Tag detection failed for archived item', archivedItemId, tagError);
+  }
 
   if (message.attachments.length > 0) {
     const { error: attachmentError } = await supabaseAdmin.from('archive_attachments').insert(
@@ -183,6 +202,7 @@ export async function syncArchiveMailbox(): Promise<ArchiveSyncResult> {
   try {
     await retryPendingDeletions(mailboxUser.id);
 
+    const tags = await getActiveTags();
     const ids = await listMessageIds(mailboxUser.id, query);
     const { data: known } = await supabaseAdmin
       .from('archived_items')
@@ -198,7 +218,7 @@ export async function syncArchiveMailbox(): Promise<ArchiveSyncResult> {
       }
       try {
         const message = await getMessage(mailboxUser.id, id);
-        const archivedItemId = await ingestArchiveMessage(mailboxUser.id, message);
+        const archivedItemId = await ingestArchiveMessage(mailboxUser.id, message, tags);
         if (!archivedItemId) {
           result.skipped += 1;
           continue;

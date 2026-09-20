@@ -1,7 +1,7 @@
 'use client';
 
 import Link from 'next/link';
-import { Calendar, Paperclip, User } from 'lucide-react';
+import { Calendar, Paperclip, Tag as TagIcon, User } from 'lucide-react';
 import { Card, CardContent } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { formatDate } from '@/components/summaries/summary-card';
@@ -33,6 +33,12 @@ export function ArchiveCard({ item }: { item: ArchiveItemView }) {
               <span className="inline-flex items-center gap-1">
                 <Paperclip size={14} />
                 {item.attachments.length}
+              </span>
+            )}
+            {item.tags.length > 0 && (
+              <span className="inline-flex items-center gap-1 truncate max-w-[10rem]">
+                <TagIcon size={14} />
+                {item.tags.map((tag) => tag.name).join(', ')}
               </span>
             )}
             {item.is_forward && (

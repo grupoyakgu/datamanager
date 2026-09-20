@@ -1,8 +1,13 @@
 import { getSupabaseAdmin } from '@/lib/supabase';
 import { getSettings } from '@/lib/settings';
-import { deleteFile, uploadFile } from '@/lib/google/drive';
+import { deleteFile, renameFile, uploadFile } from '@/lib/google/drive';
 import { getAttachmentData } from '@/lib/google/gmail';
 import { getDriveWriter, splitExtension } from '@/lib/summaries/drive-export';
+
+function attachmentDriveName(title: string, filename: string, suffix: string | null): string {
+  const { base, ext } = splitExtension(filename);
+  return suffix ? `${title} — ${base} ${suffix}${ext}` : `${title} — ${base}${ext}`;
+}
 
 /**
  * Upload every not-yet-synced attachment of an archived item into the fixed
@@ -18,7 +23,7 @@ export async function exportArchiveAttachments(archivedItemId: string, ingestedB
   if (!writer) return;
 
   const [{ data: item }, { data: attachmentRows }] = await Promise.all([
-    supabaseAdmin.from('archived_items').select('drive_file_suffix').eq('id', archivedItemId).maybeSingle(),
+    supabaseAdmin.from('archived_items').select('title, drive_file_suffix').eq('id', archivedItemId).maybeSingle(),
     supabaseAdmin
       .from('archive_attachments')
       .select('id, gmail_message_id, gmail_attachment_id, filename, mime_type, drive_file_id')
@@ -26,10 +31,10 @@ export async function exportArchiveAttachments(archivedItemId: string, ingestedB
       .is('drive_file_id', null),
   ]);
   const attachments = attachmentRows ?? [];
-  if (attachments.length === 0) return;
+  if (attachments.length === 0 || !item) return;
 
   const settings = await getSettings();
-  let suffix = item?.drive_file_suffix ?? null;
+  let suffix = item.drive_file_suffix ?? null;
   if (!suffix) {
     suffix = String(Math.floor(1000 + Math.random() * 9000));
     await supabaseAdmin.from('archived_items').update({ drive_file_suffix: suffix }).eq('id', archivedItemId);
@@ -37,8 +42,7 @@ export async function exportArchiveAttachments(archivedItemId: string, ingestedB
 
   for (const attachment of attachments) {
     try {
-      const { base, ext } = splitExtension(attachment.filename);
-      const name = `${base} ${suffix}${ext}`;
+      const name = attachmentDriveName(item.title, attachment.filename, suffix);
       const data = await getAttachmentData(ingestedBy, attachment.gmail_message_id, attachment.gmail_attachment_id);
       const uploaded = await uploadFile(writer.id, {
         name,
@@ -55,6 +59,32 @@ export async function exportArchiveAttachments(archivedItemId: string, ingestedB
       console.error('Failed to export archive attachment', attachment.filename, 'for item', archivedItemId, error);
       await supabaseAdmin.from('archive_attachments').update({ drive_sync_error: message.slice(0, 500) }).eq('id', attachment.id);
       await supabaseAdmin.from('archived_items').update({ drive_sync_error: message.slice(0, 500) }).eq('id', archivedItemId);
+    }
+  }
+}
+
+/** Rename an archived item's already-synced Drive files to match its new title. Best-effort. */
+export async function renameArchiveDriveFiles(archivedItemId: string, newTitle: string): Promise<void> {
+  const writer = await getDriveWriter();
+  if (!writer) return;
+
+  const supabaseAdmin = getSupabaseAdmin();
+  const [{ data: item }, { data: attachmentRows }] = await Promise.all([
+    supabaseAdmin.from('archived_items').select('drive_file_suffix').eq('id', archivedItemId).maybeSingle(),
+    supabaseAdmin
+      .from('archive_attachments')
+      .select('id, filename, drive_file_id')
+      .eq('archived_item_id', archivedItemId)
+      .not('drive_file_id', 'is', null),
+  ]);
+
+  for (const attachment of attachmentRows ?? []) {
+    if (!attachment.drive_file_id) continue;
+    try {
+      const name = attachmentDriveName(newTitle, attachment.filename, item?.drive_file_suffix ?? null);
+      await renameFile(writer.id, attachment.drive_file_id, name);
+    } catch (error) {
+      console.error('Failed to rename archive Drive file', attachment.drive_file_id, 'for item', archivedItemId, error);
     }
   }
 }

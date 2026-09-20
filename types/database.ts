@@ -136,6 +136,13 @@ export interface ArchiveAttachmentView {
   driveUrl: string | null;
 }
 
+export interface ArchiveCommentView {
+  id: string;
+  body: string;
+  created_at: string;
+  author: { id: string; name: string | null; email: string } | null;
+}
+
 /** An email sent (or forwarded) to the Archive mailbox. */
 export interface ArchiveItemView {
   id: string;
@@ -150,5 +157,7 @@ export interface ArchiveItemView {
   email_received_at: string | null;
   drive_sync_error: string | null;
   attachments: ArchiveAttachmentView[];
+  tags: { id: string; name: string }[];
+  comments: ArchiveCommentView[];
   created_at: string;
 }
