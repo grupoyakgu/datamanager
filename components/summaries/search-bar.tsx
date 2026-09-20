@@ -9,12 +9,14 @@ import { useT } from '@/lib/i18n/context';
 interface SearchBarProps {
   initialValue?: string;
   onSearch: (query: string) => void;
-  onAsk: (question: string) => void;
+  onAsk?: (question: string) => void;
   busy?: boolean;
   placeholder?: string;
+  /** false collapses to a single AI-powered button (Search === Ask), for contexts with no separate keyword-filter mode. */
+  showAskButton?: boolean;
 }
 
-export function SearchBar({ initialValue = '', onSearch, onAsk, busy, placeholder }: SearchBarProps) {
+export function SearchBar({ initialValue = '', onSearch, onAsk, busy, placeholder, showAskButton = true }: SearchBarProps) {
   const t = useT();
   const [value, setValue] = useState(initialValue);
 
@@ -35,13 +37,16 @@ export function SearchBar({ initialValue = '', onSearch, onAsk, busy, placeholde
         />
       </div>
       <div className="flex gap-2">
-        <Button type="submit" variant="outline" disabled={busy}>
+        <Button type="submit" variant={showAskButton ? 'outline' : 'default'} disabled={busy}>
+          {!showAskButton && <Sparkles size={16} className="mr-1" />}
           {t('common.search')}
         </Button>
-        <Button type="button" onClick={() => value.trim() && onAsk(value.trim())} disabled={busy || !value.trim()}>
-          <Sparkles size={16} className="mr-1" />
-          {t('summaries.ask')}
-        </Button>
+        {showAskButton && (
+          <Button type="button" onClick={() => value.trim() && onAsk?.(value.trim())} disabled={busy || !value.trim()}>
+            <Sparkles size={16} className="mr-1" />
+            {t('summaries.ask')}
+          </Button>
+        )}
       </div>
     </form>
   );

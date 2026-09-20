@@ -122,8 +122,8 @@ export default function DashboardPage() {
         <CardContent>
           <SearchBar
             placeholder={t('dashboard.askAnything')}
-            onSearch={(q) => router.push(`/summaries?q=${encodeURIComponent(q)}`)}
-            onAsk={(q) => router.push(`/summaries?ask=${encodeURIComponent(q)}`)}
+            onSearch={(q) => router.push(`/summaries?ask=${encodeURIComponent(q)}`)}
+            showAskButton={false}
           />
         </CardContent>
       </Card>
