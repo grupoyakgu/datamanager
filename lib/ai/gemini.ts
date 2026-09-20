@@ -22,7 +22,10 @@ interface GeminiGenerateResponse {
 
 /** Statuses worth a short retry: transient overload/rate-limit, not a real request error. */
 const RETRYABLE_STATUS = new Set([429, 503]);
-const RETRY_DELAYS_MS = [500, 1500];
+// The free tier's per-minute quota (429) needs several seconds before it
+// resets; Google's own error typically suggests ~7s, so the second attempt
+// waits close to that instead of giving up almost immediately.
+const RETRY_DELAYS_MS = [1000, 8000];
 
 function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
