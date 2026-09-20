@@ -11,7 +11,7 @@ Built with Next.js (App Router), TypeScript, Tailwind CSS v4, Supabase
 ## Features
 
 - **Google sign-in** (Supabase Auth) with Gmail read-only, Gmail send and Drive read-only scopes.
-- **Automatic ingestion**: hourly cron (and *Sync now*) scans connected mailboxes for
+- **Automatic ingestion**: daily cron (and *Sync now*) scans connected mailboxes for
   subjects containing `סיכום`, `Summary` or `Resumen`; each email is stored once
   (deduplicated by RFC Message-ID across mailboxes).
 - **AI extraction**: meeting date/time, participants, companies, topics, action items,
@@ -66,5 +66,5 @@ types/           Shared TypeScript types
 
 ## Deployment
 
-Production deploys from the `main` branch on Vercel; `vercel.json` schedules `/api/cron/sync` hourly. Set every
+Production deploys from the `main` branch on Vercel; `vercel.json` schedules `/api/cron/sync` daily. Set every
 variable from `.env.example` in the project settings (`CRON_SECRET` protects the cron route).

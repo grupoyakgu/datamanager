@@ -3,7 +3,7 @@
 The app signs users in with Google through Supabase Auth and, in the same consent
 screen, asks for read-only Gmail, Gmail send and read-only Drive access. The
 refresh token Google returns is stored server-side (`google_connections` table)
-so the hourly sync can read each user's mailbox.
+so the daily sync can read each user's mailbox.
 
 ## 1. Google Cloud project
 
@@ -48,7 +48,7 @@ tokens; without them the Gmail sync and Drive browser return
   refresh token on every sign-in.
 - `/auth/callback` posts the provider tokens to `/api/auth/google-tokens`, which
   stores them and marks the user as *Connected*.
-- The hourly Vercel cron (`vercel.json`) calls `/api/cron/sync` with the
+- The daily Vercel cron (`vercel.json`) calls `/api/cron/sync` with the
   `CRON_SECRET`; admins can also trigger *Sync now* from the Admin → Gmail tab.
 - If Google revokes the token (user removed access), the sync marks the user
   as **Gmail Authorization Required**; signing in again reconnects.
