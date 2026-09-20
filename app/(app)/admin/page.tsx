@@ -13,6 +13,7 @@ import { GmailSection } from '@/components/admin/gmail-section';
 import { DriveSection } from '@/components/admin/drive-section';
 import { AiSection } from '@/components/admin/ai-section';
 import { SystemSection } from '@/components/admin/system-section';
+import { ArchiveSection } from '@/components/admin/archive-section';
 
 export default function AdminPage() {
   const t = useT();
@@ -35,6 +36,7 @@ export default function AdminPage() {
           <TabsTrigger value="tags">{t('admin.tags')}</TabsTrigger>
           <TabsTrigger value="gmail">{t('admin.gmail')}</TabsTrigger>
           <TabsTrigger value="drive">{t('admin.drive')}</TabsTrigger>
+          <TabsTrigger value="archive">{t('nav.archive')}</TabsTrigger>
           <TabsTrigger value="ai">{t('admin.ai')}</TabsTrigger>
           <TabsTrigger value="system">{t('admin.system')}</TabsTrigger>
         </TabsList>
@@ -43,6 +45,7 @@ export default function AdminPage() {
         <TabsContent value="tags" className="mt-6"><TagsSection /></TabsContent>
         <TabsContent value="gmail" className="mt-6"><GmailSection /></TabsContent>
         <TabsContent value="drive" className="mt-6"><DriveSection /></TabsContent>
+        <TabsContent value="archive" className="mt-6"><ArchiveSection /></TabsContent>
         <TabsContent value="ai" className="mt-6"><AiSection /></TabsContent>
         <TabsContent value="system" className="mt-6"><SystemSection /></TabsContent>
       </Tabs>

@@ -136,6 +136,11 @@ export async function getAttachmentData(userId: string, messageId: string, attac
   return Buffer.from(res.data.replace(/-/g, '+').replace(/_/g, '/'), 'base64');
 }
 
+/** Move a message to Trash (reversible, same as clicking the trash icon in Gmail). */
+export async function trashMessage(userId: string, messageId: string): Promise<void> {
+  await googleFetch<unknown>(userId, `${GMAIL_BASE}/messages/${messageId}/trash`, { method: 'POST' });
+}
+
 export interface OutgoingEmail {
   to: string[];
   cc?: string[];

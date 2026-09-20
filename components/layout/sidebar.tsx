@@ -10,6 +10,7 @@ import {
   TagIcon,
   UsersIcon,
   StarIcon,
+  ArchiveIcon,
   SettingsIcon,
   MenuIcon,
   XIcon,
@@ -27,6 +28,7 @@ const menuItems = [
   { href: '/tags', key: 'nav.tags', icon: TagIcon },
   { href: '/people', key: 'nav.people', icon: UsersIcon },
   { href: '/favorites', key: 'nav.favorites', icon: StarIcon },
+  { href: '/archive', key: 'nav.archive', icon: ArchiveIcon },
 ];
 
 export function Sidebar() {

@@ -128,3 +128,27 @@ export interface SummaryView {
   is_favorite: boolean;
   similarity?: number;
 }
+
+export interface ArchiveAttachmentView {
+  id: string;
+  filename: string;
+  mimeType: string;
+  driveUrl: string | null;
+}
+
+/** An email sent (or forwarded) to the Archive mailbox. */
+export interface ArchiveItemView {
+  id: string;
+  title: string;
+  subject: string;
+  body_text: string;
+  is_forward: boolean;
+  original_sender_name: string | null;
+  original_sender_email: string | null;
+  forwarded_by_name: string | null;
+  forwarded_by_email: string | null;
+  email_received_at: string | null;
+  drive_sync_error: string | null;
+  attachments: ArchiveAttachmentView[];
+  created_at: string;
+}

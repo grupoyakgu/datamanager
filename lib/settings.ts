@@ -18,6 +18,11 @@ export interface AppSettings {
   drive_root_folder_id: string;
   /** The single Google account whose Drive holds every exported summary and attachment. */
   drive_writer_email: string;
+  /** The dedicated mailbox that turns any email sent/forwarded to it into an Archive item. */
+  archive_mailbox: string;
+  /** Fixed Drive folder every Archive attachment is saved into. */
+  archive_drive_folder_id: string;
+  archive_sync_lookback_days: number;
 }
 
 export const DEFAULT_SETTINGS: AppSettings = {
@@ -44,6 +49,9 @@ export const DEFAULT_SETTINGS: AppSettings = {
   ],
   drive_root_folder_id: 'root',
   drive_writer_email: 'koby@grupoyakgu.es',
+  archive_mailbox: 'archive@grupoyakgu.es',
+  archive_drive_folder_id: '1N0l2LXwvJZeOpiuPQ_3lnzXrM08WwkMt',
+  archive_sync_lookback_days: 365,
 };
 
 export const SETTING_KEYS = Object.keys(DEFAULT_SETTINGS) as (keyof AppSettings)[];

@@ -22,6 +22,15 @@ export const PATCH = handleRoute(async (request: Request) => {
       throw new HttpError(400, error instanceof Error ? error.message : 'Invalid Drive folder');
     }
   }
+  if (typeof body.archive_drive_folder_id === 'string') {
+    try {
+      const resolved = await resolveDriveRootId(user.id, body.archive_drive_folder_id);
+      if (resolved === 'root') throw new Error('Paste a specific folder link, not "root".');
+      body.archive_drive_folder_id = resolved;
+    } catch (error) {
+      throw new HttpError(400, error instanceof Error ? error.message : 'Invalid Drive folder');
+    }
+  }
 
   await updateSettings(body);
   await logAudit(user.id, 'settings.updated', 'app_settings', '*', { keys: Object.keys(body) });
