@@ -14,7 +14,7 @@ import { Dialog } from '@/components/ui/dialog';
 import { Textarea } from '@/components/ui/textarea';
 import { Badge } from '@/components/ui/badge';
 import { Card, CardContent } from '@/components/ui/card';
-import { useFolders, useSummaries, useTags, useInvalidateSummaries, type SummaryFilters } from '@/hooks/use-api';
+import { useFolders, useDriveRootFolders, useSummaries, useTags, useInvalidateSummaries, type SummaryFilters } from '@/hooks/use-api';
 import { api } from '@/lib/api-client';
 import { useT } from '@/lib/i18n/context';
 import { resolvePeriod } from '@/lib/ai/query-parser';
@@ -36,6 +36,7 @@ function SummariesContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const { data: folders } = useFolders();
+  const { data: driveFolders } = useDriveRootFolders();
   const { data: tags } = useTags();
   const invalidate = useInvalidateSummaries();
 
@@ -44,7 +45,7 @@ function SummariesContent() {
   const [period, setPeriod] = useState<Period>('');
   const [dateFrom, setDateFrom] = useState('');
   const [dateTo, setDateTo] = useState('');
-  const [folderId, setFolderId] = useState(searchParams.get('folderId') ?? '');
+  const [driveFolder, setDriveFolder] = useState(searchParams.get('driveFolder') ?? '');
   const [tagId, setTagId] = useState(searchParams.get('tagId') ?? '');
   const [participant, setParticipant] = useState(searchParams.get('participant') ?? '');
   const [incomplete, setIncomplete] = useState(searchParams.get('incomplete') === '1');
@@ -59,13 +60,13 @@ function SummariesContent() {
       q: query || undefined,
       dateFrom: resolved.from ?? undefined,
       dateTo: resolved.to ?? undefined,
-      folderId: folderId || undefined,
+      driveFolder: driveFolder || undefined,
       tagIds: tagId ? [tagId] : undefined,
       participant: participant || undefined,
       incomplete: incomplete || undefined,
       limit: 100,
     };
-  }, [query, period, dateFrom, dateTo, folderId, tagId, participant, incomplete]);
+  }, [query, period, dateFrom, dateTo, driveFolder, tagId, participant, incomplete]);
 
   const { data, isLoading, error } = useSummaries(filters, !askResult);
 
@@ -96,7 +97,7 @@ function SummariesContent() {
     setPeriod('');
     setDateFrom('');
     setDateTo('');
-    setFolderId('');
+    setDriveFolder('');
     setTagId('');
     setParticipant('');
     setIncomplete(false);
@@ -104,7 +105,7 @@ function SummariesContent() {
   };
 
   const results: SummaryView[] = askResult ? askResult.results : data?.results ?? [];
-  const hasFilters = !!(query || period || folderId || tagId || participant || incomplete || askResult);
+  const hasFilters = !!(query || period || driveFolder || tagId || participant || incomplete || askResult);
 
   return (
     <div>
@@ -154,10 +155,10 @@ function SummariesContent() {
           )}
           <div className="space-y-1">
             <Label>{t('summaries.folder')}</Label>
-            <Select value={folderId} onChange={(e) => { setAskResult(null); setFolderId(e.target.value); }}>
+            <Select value={driveFolder} onChange={(e) => { setAskResult(null); setDriveFolder(e.target.value); }}>
               <option value="">{t('common.all')}</option>
-              {folders?.map((f) => (
-                <option key={f.id} value={f.id}>
+              {driveFolders?.map((f) => (
+                <option key={f.id} value={f.name}>
                   {f.name}
                 </option>
               ))}

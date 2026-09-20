@@ -14,6 +14,16 @@ export function useFolders() {
   return useQuery({ queryKey: ['folders'], queryFn: () => api.get<FolderWithCount[]>('/api/folders'), enabled: !!user });
 }
 
+/** Folders that actually exist in Drive directly under the configured root — used for filtering by Drive folder. */
+export function useDriveRootFolders() {
+  const { user } = useUser();
+  return useQuery({
+    queryKey: ['drive-root-folders'],
+    queryFn: () => api.get<{ id: string; name: string }[]>('/api/drive/root-folders'),
+    enabled: !!user,
+  });
+}
+
 export function useTags(includeInactive = false) {
   const { user } = useUser();
   return useQuery({
@@ -28,6 +38,7 @@ export interface SummaryFilters {
   dateFrom?: string;
   dateTo?: string;
   folderId?: string;
+  driveFolder?: string;
   tagIds?: string[];
   participant?: string;
   favorites?: boolean;
@@ -41,6 +52,7 @@ export function buildSummaryQuery(filters: SummaryFilters): string {
   if (filters.dateFrom) params.set('dateFrom', filters.dateFrom);
   if (filters.dateTo) params.set('dateTo', filters.dateTo);
   if (filters.folderId) params.set('folderId', filters.folderId);
+  if (filters.driveFolder) params.set('driveFolder', filters.driveFolder);
   for (const id of filters.tagIds ?? []) params.append('tagId', id);
   if (filters.participant) params.set('participant', filters.participant);
   if (filters.favorites) params.set('favorites', '1');

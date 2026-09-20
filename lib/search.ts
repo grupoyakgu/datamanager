@@ -10,6 +10,8 @@ export interface SearchFilters {
   dateFrom?: string;
   dateTo?: string;
   folderId?: string;
+  /** Name of a Drive folder (= a summary's primary tag, or its manual override). */
+  driveFolderName?: string;
   tagIds?: string[];
   participant?: string;
   favoritesOf?: string;
@@ -77,6 +79,19 @@ export async function searchSummaries(filters: SearchFilters, userId: string): P
   if (filters.favoritesOf) {
     const { data } = await supabaseAdmin.from('favorites').select('summary_id').eq('user_id', filters.favoritesOf);
     const ids = (data ?? []).map((r) => r.summary_id as string);
+    restrictIds = restrictIds ? restrictIds.filter((id) => ids.includes(id)) : ids;
+  }
+  if (filters.driveFolderName) {
+    // A summary's Drive folder is its primary tag (drive_folder_tag_id) or,
+    // when set, its manual override — not the legacy internal folder_id.
+    const { data: tagMatch } = await supabaseAdmin.from('tags').select('id').eq('name', filters.driveFolderName).maybeSingle();
+    const [{ data: overrideRows }, tagRowsResult] = await Promise.all([
+      supabaseAdmin.from('meeting_summaries').select('id').eq('drive_folder_override', filters.driveFolderName),
+      tagMatch ? supabaseAdmin.from('meeting_summaries').select('id').eq('drive_folder_tag_id', tagMatch.id) : Promise.resolve({ data: [] }),
+    ]);
+    const ids = Array.from(
+      new Set([...(overrideRows ?? []).map((r) => r.id as string), ...(tagRowsResult.data ?? []).map((r) => r.id as string)])
+    );
     restrictIds = restrictIds ? restrictIds.filter((id) => ids.includes(id)) : ids;
   }
   if (restrictIds && restrictIds.length === 0) {
