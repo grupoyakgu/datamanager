@@ -7,7 +7,6 @@ import { ArrowLeft, Calendar, Users, Tag as TagIcon, Folder, Mail, RefreshCw, St
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
-import { Select } from '@/components/ui/select';
 import { Label } from '@/components/ui/label';
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
@@ -16,7 +15,7 @@ import { SendEmailDialog } from '@/components/summaries/send-email-dialog';
 import { LinkifiedText } from '@/components/summaries/linkified-text';
 import { formatDate } from '@/components/summaries/summary-card';
 import { EmptyState } from '@/components/layout/page-header';
-import { useFolders, useSummary, useTags, useToggleFavorite, useInvalidateSummaries } from '@/hooks/use-api';
+import { useSummary, useTags, useToggleFavorite, useInvalidateSummaries } from '@/hooks/use-api';
 import { useUser } from '@/hooks/use-user';
 import { api } from '@/lib/api-client';
 import { useT } from '@/lib/i18n/context';
@@ -58,7 +57,6 @@ export default function SummaryDetailPage({ params }: { params: Promise<{ id: st
   const router = useRouter();
   const { user } = useUser();
   const { data: summary, isLoading, error } = useSummary(id);
-  const { data: folders } = useFolders();
   const { data: tags } = useTags();
   const toggleFavorite = useToggleFavorite();
   const invalidate = useInvalidateSummaries();
@@ -263,6 +261,19 @@ export default function SummaryDetailPage({ params }: { params: Promise<{ id: st
             <span>{t('summaries.needsFolderReview')}</span>
           </div>
         )}
+        {summary.ai_extraction_error && (
+          <div className="flex items-start gap-2 rounded-md border border-red-300 bg-red-50 dark:bg-red-950/30 p-3 text-sm text-red-800 dark:text-red-200">
+            <AlertTriangle size={16} className="mt-0.5 shrink-0" />
+            <div className="space-y-1">
+              <p>{t('summaries.aiExtractionFailed')}</p>
+              <p className="text-xs opacity-80 break-words">{summary.ai_extraction_error}</p>
+              <Button size="sm" variant="outline" onClick={reprocess} disabled={reprocessing}>
+                <RefreshCw size={14} className={cn('mr-1', reprocessing && 'animate-spin')} />
+                {reprocessing ? t('summaries.reprocessing') : t('summaries.reprocess')}
+              </Button>
+            </div>
+          </div>
+        )}
         {message && (
           <p className={cn('text-xs', message.error ? 'text-destructive font-medium' : 'text-emerald-600')}>{message.text}</p>
         )}
@@ -374,21 +385,19 @@ export default function SummaryDetailPage({ params }: { params: Promise<{ id: st
                   </Button>
                 </div>
               )}
+            </CardContent>
+          </Card>
 
-              <div className="space-y-1">
-                <Label>{t('summaries.changeFolder')}</Label>
-                <Select value={summary.folder?.id ?? ''} onChange={(e) => update({ folderId: e.target.value })}>
-                  {folders?.map((f) => (
-                    <option key={f.id} value={f.id}>
-                      {f.name}
-                    </option>
-                  ))}
-                </Select>
-              </div>
+          <Card>
+            <CardContent className="pt-5 text-sm space-y-2">
+              <Row label={t('summaries.source')} value={summary.source === 'gmail' ? 'Gmail' : 'Manual'} />
+              {summary.email_from && <Row label={t('summaries.receivedFrom')} value={summary.email_from} />}
+              {summary.email_received_at && <Row label={t('summaries.received')} value={new Date(summary.email_received_at).toLocaleString()} />}
+              {summary.created_by && <Row label={t('summaries.addedBy')} value={summary.created_by.name ?? summary.created_by.email} />}
 
-              <div className="space-y-1">
+              <div className="pt-2 border-t border-border space-y-1">
                 <div className="flex items-center justify-between">
-                  <Label>{t('summaries.tags')}</Label>
+                  <span className="text-muted-foreground">{t('summaries.tags')}</span>
                   <Button variant="ghost" size="sm" onClick={() => setEditingTags((v) => !v)}>
                     {editingTags ? t('common.close') : t('summaries.editTags')}
                   </Button>
@@ -414,15 +423,7 @@ export default function SummaryDetailPage({ params }: { params: Promise<{ id: st
                   {!editingTags && summary.tags.length === 0 && <span className="text-xs text-muted-foreground">{t('common.none')}</span>}
                 </div>
               </div>
-            </CardContent>
-          </Card>
 
-          <Card>
-            <CardContent className="pt-5 text-sm space-y-2">
-              <Row label={t('summaries.source')} value={summary.source === 'gmail' ? 'Gmail' : 'Manual'} />
-              {summary.email_from && <Row label={t('summaries.receivedFrom')} value={summary.email_from} />}
-              {summary.email_received_at && <Row label={t('summaries.received')} value={new Date(summary.email_received_at).toLocaleString()} />}
-              {summary.created_by && <Row label={t('summaries.addedBy')} value={summary.created_by.name ?? summary.created_by.email} />}
               {summary.drive_doc_url ? (
                 <div className="flex justify-between gap-3">
                   <span className="text-muted-foreground">{t('summaries.driveDoc')}</span>

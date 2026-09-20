@@ -20,9 +20,30 @@ interface GeminiGenerateResponse {
   promptFeedback?: { blockReason?: string };
 }
 
+/** Statuses worth a short retry: transient overload/rate-limit, not a real request error. */
+const RETRYABLE_STATUS = new Set([429, 503]);
+const RETRY_DELAYS_MS = [500, 1500];
+
+function sleep(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+/** POST with a couple of short backoff retries on 429/503 ("high demand") responses. */
+async function fetchWithRetry(url: string, init: RequestInit): Promise<Response> {
+  let lastError: Error | null = null;
+  for (let attempt = 0; attempt <= RETRY_DELAYS_MS.length; attempt++) {
+    const response = await fetch(url, init);
+    if (response.ok) return response;
+    lastError = new Error(`Gemini API ${response.status}: ${(await response.text()).slice(0, 500)}`);
+    if (!RETRYABLE_STATUS.has(response.status) || attempt === RETRY_DELAYS_MS.length) throw lastError;
+    await sleep(RETRY_DELAYS_MS[attempt]);
+  }
+  throw lastError ?? new Error('Gemini API request failed');
+}
+
 async function generateContent(system: string, userText: string, temperature = 0): Promise<string> {
   const apiKey = requireApiKey();
-  const response = await fetch(`${API_BASE}/models/${CHAT_MODEL}:generateContent`, {
+  const response = await fetchWithRetry(`${API_BASE}/models/${CHAT_MODEL}:generateContent`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json', 'x-goog-api-key': apiKey },
     body: JSON.stringify({
@@ -31,9 +52,6 @@ async function generateContent(system: string, userText: string, temperature = 0
       generationConfig: { temperature, responseMimeType: 'application/json' },
     }),
   });
-  if (!response.ok) {
-    throw new Error(`Gemini API ${response.status}: ${(await response.text()).slice(0, 500)}`);
-  }
   const data = (await response.json()) as GeminiGenerateResponse;
   if (data.promptFeedback?.blockReason) {
     throw new Error(`Gemini blocked the request: ${data.promptFeedback.blockReason}`);
@@ -60,7 +78,7 @@ function l2Normalize(vector: number[]): number[] {
 
 export async function embedWithGemini(text: string): Promise<number[] | null> {
   const apiKey = requireApiKey();
-  const response = await fetch(`${API_BASE}/models/${EMBEDDING_MODEL}:embedContent`, {
+  const response = await fetchWithRetry(`${API_BASE}/models/${EMBEDDING_MODEL}:embedContent`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json', 'x-goog-api-key': apiKey },
     body: JSON.stringify({
@@ -68,9 +86,6 @@ export async function embedWithGemini(text: string): Promise<number[] | null> {
       outputDimensionality: EMBEDDING_DIMENSIONS,
     }),
   });
-  if (!response.ok) {
-    throw new Error(`Gemini API ${response.status}: ${(await response.text()).slice(0, 500)}`);
-  }
   const data = (await response.json()) as GeminiEmbedResponse;
   const values = data.embedding?.values;
   return values && values.length > 0 ? l2Normalize(values) : null;

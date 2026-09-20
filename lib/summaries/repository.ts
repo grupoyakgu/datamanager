@@ -9,7 +9,7 @@ export const SUMMARY_SELECT = `
   email_from, email_subject, email_received_at,
   folder:folders ( id, name ),
   meeting_summary_tags ( tags ( id, name ) ),
-  extracted_data ( participants, companies, topics, action_items, decisions ),
+  extracted_data ( participants, companies, topics, action_items, decisions, model, ai_error ),
   created_by_user:users!meeting_summaries_created_by_fkey ( id, name, email ),
   summary_attachments ( id, filename, drive_file_id )
 `;
@@ -38,8 +38,8 @@ interface RawSummary {
   folder: { id: string; name: string } | { id: string; name: string }[] | null;
   meeting_summary_tags: { tags: { id: string; name: string } | null }[] | null;
   extracted_data:
-    | { participants: string[]; companies: string[]; topics: string[]; action_items: string[]; decisions: string[] }
-    | { participants: string[]; companies: string[]; topics: string[]; action_items: string[]; decisions: string[] }[]
+    | { participants: string[]; companies: string[]; topics: string[]; action_items: string[]; decisions: string[]; model: string | null; ai_error: string | null }
+    | { participants: string[]; companies: string[]; topics: string[]; action_items: string[]; decisions: string[]; model: string | null; ai_error: string | null }[]
     | null;
   created_by_user: { id: string; name: string | null; email: string } | { id: string; name: string | null; email: string }[] | null;
   summary_attachments: { id: string; filename: string; drive_file_id: string | null }[] | null;
@@ -74,6 +74,7 @@ export function toSummaryView(raw: unknown, favoriteIds: Set<string> = new Set()
     needs_folder_review: row.needs_folder_review ?? false,
     drive_folder_override: row.drive_folder_override,
     drive_folder_name: row.drive_folder_override || tags[0]?.name || null,
+    ai_extraction_error: extracted?.model === 'heuristic' ? (extracted?.ai_error ?? null) : null,
     attachments: (row.summary_attachments ?? []).map((a) => ({
       id: a.id,
       filename: a.filename,

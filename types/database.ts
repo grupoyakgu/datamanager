@@ -110,6 +110,7 @@ export interface SummaryView {
   needs_folder_review: boolean;
   drive_folder_override: string | null;
   drive_folder_name: string | null;
+  ai_extraction_error: string | null;
   attachments: { id: string; filename: string; driveUrl: string | null }[];
   created_at: string;
   updated_at: string;

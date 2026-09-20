@@ -65,6 +65,7 @@ export async function processSummary(summaryId: string, options: { applyFolderRu
         detected_tags: extraction.tags,
         meeting_time: extraction.meetingTime,
         model: extraction.model,
+        ai_error: extraction.aiError,
         raw: extraction.raw,
         extracted_at: new Date().toISOString(),
       },

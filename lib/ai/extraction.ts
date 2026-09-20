@@ -18,6 +18,8 @@ export interface ExtractionResult {
   language: string | null;
   model: string;
   raw: Record<string, unknown>;
+  /** Set when Gemini was configured but the call failed, so heuristics were used instead. */
+  aiError: string | null;
 }
 
 function normalize(value: string): string {
@@ -133,7 +135,7 @@ export async function extractFromSummary(params: {
   const { title, content, emailDate, tags, fields } = params;
   const keywordTags = detectTagsByKeyword(`${title}\n${content}`, tags);
 
-  const heuristicResult = (): ExtractionResult => ({
+  const heuristicResult = (aiError: string | null = null): ExtractionResult => ({
     meetingDate: detectDateFromEmail(title, content),
     meetingTime: null,
     participants: [],
@@ -145,6 +147,7 @@ export async function extractFromSummary(params: {
     language: null,
     model: 'heuristic',
     raw: {},
+    aiError,
   });
 
   if (!isAiConfigured()) return heuristicResult();
@@ -175,7 +178,7 @@ Requested fields: ${fields.join(', ')}. Return empty arrays or null for fields y
     // placement, completeness scoring or Drive export from still running
     // on whatever heuristics can find.
     console.error('Gemini extraction failed, falling back to heuristics:', aiError);
-    return heuristicResult();
+    return heuristicResult(aiError instanceof Error ? aiError.message : String(aiError));
   }
 
   const allowedTagNames = new Set(tags.map((t) => t.name.toLowerCase()));
@@ -196,6 +199,7 @@ Requested fields: ${fields.join(', ')}. Return empty arrays or null for fields y
     tags: mergedTags,
     language: typeof raw.language === 'string' ? raw.language.slice(0, 5) : null,
     model: CHAT_MODEL,
+    aiError: null,
     raw,
   };
 }
