@@ -9,7 +9,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { api } from '@/lib/api-client';
 import { useT } from '@/lib/i18n/context';
 import { useInvalidateArchive } from '@/hooks/use-archive';
-import { useAdminUsers, useSettings, useInvalidateAdmin } from './use-admin';
+import { useAdminUsers, useSettings, useInvalidateAdmin, splitList } from './use-admin';
 import { GmailStatusBadge } from './users-section';
 import { cn } from '@/lib/utils';
 import type { ArchiveSyncResult } from '@/lib/archive/sync';
@@ -23,6 +23,7 @@ export function ArchiveSection() {
   const [mailbox, setMailbox] = useState<string | null>(null);
   const [folder, setFolder] = useState<string | null>(null);
   const [lookback, setLookback] = useState<string | null>(null);
+  const [excludedExtensions, setExcludedExtensions] = useState<string | null>(null);
   const [status, setStatus] = useState<string | null>(null);
   const [syncing, setSyncing] = useState(false);
   const [syncResult, setSyncResult] = useState<ArchiveSyncResult | null>(null);
@@ -38,6 +39,9 @@ export function ArchiveSection() {
         archive_mailbox: (mailbox ?? settings?.archive_mailbox ?? '').trim(),
         archive_drive_folder_id: (folder ?? settings?.archive_drive_folder_id ?? '').trim(),
         archive_sync_lookback_days: Number(lookback ?? settings?.archive_sync_lookback_days ?? 365),
+        archive_excluded_extensions: splitList(excludedExtensions ?? settings?.archive_excluded_extensions.join(', ') ?? '').map((e) =>
+          e.toLowerCase().replace(/^\./, '')
+        ),
       });
       invalidateAdmin('admin-settings');
       setStatus(t('common.saved'));
@@ -96,6 +100,15 @@ export function ArchiveSection() {
               value={lookback ?? String(settings.archive_sync_lookback_days)}
               onChange={(e) => setLookback(e.target.value)}
             />
+          </div>
+          <div className="space-y-1">
+            <Label>{t('admin.archiveExcludedExtensions')}</Label>
+            <Input
+              value={excludedExtensions ?? settings.archive_excluded_extensions.join(', ')}
+              onChange={(e) => setExcludedExtensions(e.target.value)}
+              placeholder="png, gif"
+            />
+            <p className="text-xs text-muted-foreground">{t('admin.archiveExcludedExtensionsHint')}</p>
           </div>
           <div className="flex items-center gap-3">
             <Button onClick={save}>{t('common.save')}</Button>

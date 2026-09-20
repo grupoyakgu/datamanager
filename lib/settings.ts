@@ -23,6 +23,8 @@ export interface AppSettings {
   /** Fixed Drive folder every Archive attachment is saved into. */
   archive_drive_folder_id: string;
   archive_sync_lookback_days: number;
+  /** Attachment file extensions (no dot, lowercase) never saved to the Archive. */
+  archive_excluded_extensions: string[];
 }
 
 export const DEFAULT_SETTINGS: AppSettings = {
@@ -52,6 +54,7 @@ export const DEFAULT_SETTINGS: AppSettings = {
   archive_mailbox: 'repo@grupoyakgu.es',
   archive_drive_folder_id: '1N0l2LXwvJZeOpiuPQ_3lnzXrM08WwkMt',
   archive_sync_lookback_days: 365,
+  archive_excluded_extensions: ['png'],
 };
 
 export const SETTING_KEYS = Object.keys(DEFAULT_SETTINGS) as (keyof AppSettings)[];

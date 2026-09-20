@@ -4,11 +4,19 @@ import { getMessage, listMessageIds, trashMessage, type GmailMessage } from '@/l
 import { GoogleAuthError } from '@/lib/google/oauth';
 import { logAudit } from '@/lib/auth';
 import { getActiveTags } from '@/lib/summaries/repository';
+import { splitExtension } from '@/lib/summaries/drive-export';
 import { detectContentTags } from '@/lib/ai/tag-detection';
 import { parseAddress, parseForward } from './parse-forward';
 import { exportArchiveAttachments } from './drive-export';
 
 type TagRow = { id: string; name: string; aliases: string[] };
+
+/** Drop attachments whose extension is on the admin-configured exclude list (e.g. png). */
+function filterExcludedAttachments<T extends { filename: string }>(attachments: T[], excludedExtensions: string[]): T[] {
+  const excluded = new Set(excludedExtensions.map((e) => e.toLowerCase().replace(/^\./, '')));
+  if (excluded.size === 0) return attachments;
+  return attachments.filter((a) => !excluded.has(splitExtension(a.filename).ext.replace(/^\./, '').toLowerCase()));
+}
 
 export interface ArchiveSyncResult {
   mailbox: string | null;
@@ -71,8 +79,17 @@ async function allAttachmentsSynced(archivedItemId: string): Promise<boolean> {
  *
  * Tags it with whichever of the application's existing tags the content
  * matches (see detectContentTags) — never invents new tags.
+ *
+ * Attachments whose extension is on the admin-configured exclude list (e.g.
+ * png, for inline signature images) are dropped entirely — never saved to
+ * Drive or recorded — while the rest of the email is still archived as usual.
  */
-export async function ingestArchiveMessage(mailboxUserId: string, message: GmailMessage, tags: TagRow[]): Promise<string | null> {
+export async function ingestArchiveMessage(
+  mailboxUserId: string,
+  message: GmailMessage,
+  tags: TagRow[],
+  excludedExtensions: string[]
+): Promise<string | null> {
   const supabaseAdmin = getSupabaseAdmin();
   const { data: existing } = await supabaseAdmin.from('archived_items').select('id').eq('gmail_message_id', message.id).limit(1);
   if (existing && existing.length > 0) return null;
@@ -125,9 +142,11 @@ export async function ingestArchiveMessage(mailboxUserId: string, message: Gmail
     console.error('Tag detection failed for archived item', archivedItemId, tagError);
   }
 
-  if (message.attachments.length > 0) {
+  const attachments = filterExcludedAttachments(message.attachments, excludedExtensions);
+
+  if (attachments.length > 0) {
     const { error: attachmentError } = await supabaseAdmin.from('archive_attachments').insert(
-      message.attachments.map((attachment) => ({
+      attachments.map((attachment) => ({
         archived_item_id: archivedItemId,
         gmail_message_id: message.id,
         gmail_attachment_id: attachment.attachmentId,
@@ -218,7 +237,7 @@ export async function syncArchiveMailbox(): Promise<ArchiveSyncResult> {
       }
       try {
         const message = await getMessage(mailboxUser.id, id);
-        const archivedItemId = await ingestArchiveMessage(mailboxUser.id, message, tags);
+        const archivedItemId = await ingestArchiveMessage(mailboxUser.id, message, tags, settings.archive_excluded_extensions);
         if (!archivedItemId) {
           result.skipped += 1;
           continue;
