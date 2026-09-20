@@ -52,7 +52,7 @@ function AiForm({ settings }: { settings: AppSettings }) {
                 checked={fields.includes(field)}
                 onChange={(e) => setFields(e.target.checked ? [...fields, field] : fields.filter((f) => f !== field))}
               />
-              {field}
+              {t(`admin.extractionFieldLabels.${field}`)}
             </label>
           ))}
         </CardContent>
