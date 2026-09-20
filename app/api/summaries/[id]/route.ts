@@ -71,9 +71,12 @@ export const PATCH = handleRoute(async (request: Request, { params }: Params) =>
 
     await supabaseAdmin.from('meeting_summary_tags').delete().eq('summary_id', id);
     if (body.tagIds.length > 0) {
+      // Position preserves the given order (the UI keeps existing tags at
+      // the front and appends newly toggled-on ones), so a manually added
+      // tag never displaces an already-established primary/folder tag.
       const { error } = await supabaseAdmin
         .from('meeting_summary_tags')
-        .insert(body.tagIds.map((tagId) => ({ summary_id: id, tag_id: tagId })));
+        .insert(body.tagIds.map((tagId, i) => ({ summary_id: id, tag_id: tagId, position: i })));
       if (error) throw new Error(error.message);
     }
 

@@ -71,11 +71,12 @@ export async function getDriveWriter(): Promise<{ id: string; email: string } | 
  * Export one summary as a Google Doc directly under the configured Drive
  * root, inside a folder named after either:
  *   1. `drive_folder_override`, when the user has manually moved it, or
- *   2. its "sticky" folder tag (`drive_folder_tag_id`) — the tag that was
- *      picked (first alphabetically) the last time the folder was resolved.
- *      Adding more tags alongside it does NOT move the Doc; only once that
- *      tag is deselected does this fall through to the alphabetically-first
- *      tag among whatever remains, which then becomes the new sticky tag.
+ *   2. its "sticky" folder tag (`drive_folder_tag_id`) — the primary tag
+ *      (highest relevance, per extraction.ts/process.ts's `position`, not
+ *      alphabetical) picked the last time the folder was resolved. Adding
+ *      more tags alongside it does NOT move the Doc; only once that tag is
+ *      deselected does this fall through to the new primary tag among
+ *      whatever remains, which then becomes the new sticky tag.
  * The folder is created if it doesn't already exist.
  *
  * A summary with no tags and no manual override has nothing to file
@@ -100,30 +101,37 @@ export async function exportSummaryToDrive(summaryId: string): Promise<DriveExpo
   if (!summary) return { skipped: 'not_found' };
 
   const [{ data: tagLinks }, { data: extracted }, { data: attachmentRows }] = await Promise.all([
-    supabaseAdmin.from('meeting_summary_tags').select('tags(id, name)').eq('summary_id', summaryId),
+    supabaseAdmin.from('meeting_summary_tags').select('tags(id, name), position').eq('summary_id', summaryId),
     supabaseAdmin.from('extracted_data').select('participants').eq('summary_id', summaryId).maybeSingle(),
     supabaseAdmin
       .from('summary_attachments')
       .select('id, gmail_message_id, gmail_attachment_id, ingested_by, filename, mime_type, drive_file_id')
       .eq('summary_id', summaryId),
   ]);
-  const tagRows = (tagLinks ?? [])
+  const tagLinkRows = (tagLinks ?? [])
     .map((row) => {
       const tag = row.tags as { id: string; name: string } | { id: string; name: string }[] | null;
-      return Array.isArray(tag) ? tag[0] : tag;
+      return { tag: Array.isArray(tag) ? tag[0] : tag, position: row.position as number | null };
     })
-    .filter((t): t is { id: string; name: string } => !!t)
-    .sort((a, b) => a.name.localeCompare(b.name));
+    .filter((row): row is { tag: { id: string; name: string }; position: number | null } => !!row.tag);
+  const tagRows = tagLinkRows.map((r) => r.tag).sort((a, b) => a.name.localeCompare(b.name));
   const tagNames = tagRows.map((t) => t.name);
+  // Most relevant/primary tag first (see extraction.ts/process.ts), not
+  // alphabetical — this is what a summary's Drive file gets filed under.
+  const primaryTagName = [...tagLinkRows].sort((a, b) => {
+    const pa = a.position ?? Number.MAX_SAFE_INTEGER;
+    const pb = b.position ?? Number.MAX_SAFE_INTEGER;
+    return pa !== pb ? pa - pb : a.tag.name.localeCompare(b.tag.name);
+  })[0]?.tag.name;
   const attachments = attachmentRows ?? [];
 
   // The tag that currently owns the folder stays "sticky" across tag edits
-  // (see moveSummaryToDriveFolder/PATCH route); fall back to the
-  // alphabetically-first tag if it's stale or was never set.
+  // (see moveSummaryToDriveFolder/PATCH route); fall back to the primary
+  // (highest-relevance) tag if it's stale or was never set.
   const stickyTagName = summary.drive_folder_tag_id
     ? tagRows.find((t) => t.id === summary.drive_folder_tag_id)?.name
     : undefined;
-  const folderName = summary.drive_folder_override || stickyTagName || tagNames[0] || null;
+  const folderName = summary.drive_folder_override || stickyTagName || primaryTagName || null;
 
   if (!folderName) {
     await supabaseAdmin

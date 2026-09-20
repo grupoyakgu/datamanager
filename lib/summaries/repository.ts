@@ -8,7 +8,7 @@ export const SUMMARY_SELECT = `
   created_at, updated_at,
   email_from, email_subject, email_received_at,
   folder:folders ( id, name ),
-  meeting_summary_tags ( tags ( id, name ) ),
+  meeting_summary_tags ( tags ( id, name ), position ),
   extracted_data ( participants, companies, topics, action_items, decisions, model, ai_error ),
   created_by_user:users!meeting_summaries_created_by_fkey ( id, name, email ),
   summary_attachments ( id, filename, drive_file_id )
@@ -37,7 +37,7 @@ interface RawSummary {
   email_subject: string | null;
   email_received_at: string | null;
   folder: { id: string; name: string } | { id: string; name: string }[] | null;
-  meeting_summary_tags: { tags: { id: string; name: string } | null }[] | null;
+  meeting_summary_tags: { tags: { id: string; name: string } | null; position: number | null }[] | null;
   extracted_data:
     | { participants: string[]; companies: string[]; topics: string[]; action_items: string[]; decisions: string[]; model: string | null; ai_error: string | null }
     | { participants: string[]; companies: string[]; topics: string[]; action_items: string[]; decisions: string[]; model: string | null; ai_error: string | null }[]
@@ -54,10 +54,17 @@ function one<T>(value: T | T[] | null): T | null {
 export function toSummaryView(raw: unknown, favoriteIds: Set<string> = new Set()): SummaryView {
   const row = raw as RawSummary;
   const extracted = one(row.extracted_data);
-  const tags = (row.meeting_summary_tags ?? [])
-    .map((t) => t.tags)
-    .filter((t): t is { id: string; name: string } => !!t)
-    .sort((a, b) => a.name.localeCompare(b.name));
+  const tagLinks = (row.meeting_summary_tags ?? [])
+    .filter((t): t is { tags: { id: string; name: string }; position: number | null } => !!t.tags)
+    .map((t) => ({ tag: t.tags, position: t.position }));
+  const tags = tagLinks.map((t) => t.tag).sort((a, b) => a.name.localeCompare(b.name));
+  // Most relevant/primary tag first (see extraction.ts/process.ts), matching
+  // the same rule drive-export.ts uses to pick the Drive folder.
+  const primaryTagName = [...tagLinks].sort((a, b) => {
+    const pa = a.position ?? Number.MAX_SAFE_INTEGER;
+    const pb = b.position ?? Number.MAX_SAFE_INTEGER;
+    return pa !== pb ? pa - pb : a.tag.name.localeCompare(b.tag.name);
+  })[0]?.tag.name;
   return {
     id: row.id,
     title: row.title,
@@ -77,7 +84,7 @@ export function toSummaryView(raw: unknown, favoriteIds: Set<string> = new Set()
     drive_folder_name:
       row.drive_folder_override ||
       tags.find((t) => t.id === row.drive_folder_tag_id)?.name ||
-      tags[0]?.name ||
+      primaryTagName ||
       null,
     ai_extraction_error: extracted?.model === 'heuristic' ? (extracted?.ai_error ?? null) : null,
     attachments: (row.summary_attachments ?? []).map((a) => ({

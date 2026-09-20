@@ -165,7 +165,7 @@ Return ONLY a JSON object with these keys:
 - topics: array of short topic labels (3-8 words each).
 - action_items: array of tasks agreed, one sentence each.
 - decisions: array of decisions taken, one sentence each.
-- tags: array of tag names chosen ONLY from this dictionary, when the tag is mentioned or the content clearly relates to it:
+- tags: array of tag names chosen ONLY from this dictionary, when the tag is mentioned or the content clearly relates to it. Order the array from most to least relevant/confident — the summary's Drive file gets filed under the first tag, so put the single best-fitting tag first:
 ${tagDictionary || '(empty)'}
 - language: ISO 639-1 code of the summary text (he, es, en, ...).
 Requested fields: ${fields.join(', ')}. Return empty arrays or null for fields you cannot determine. Do not invent information.`;
@@ -186,7 +186,9 @@ Requested fields: ${fields.join(', ')}. Return empty arrays or null for fields y
     .map((name) => tags.find((t) => t.name.toLowerCase() === name.toLowerCase())?.name)
     .filter((name): name is string => !!name && allowedTagNames.has(name.toLowerCase()));
 
-  const mergedTags = Array.from(new Set([...keywordTags, ...aiTags]));
+  // AI order reflects relevance (most confident first, per the prompt above);
+  // keyword-only matches it didn't surface are appended after as extras.
+  const mergedTags = Array.from(new Set([...aiTags, ...keywordTags]));
 
   return {
     meetingDate: asDate(raw.meeting_date) ?? detectDateFromEmail(title, content),

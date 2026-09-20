@@ -36,9 +36,12 @@ export async function processSummary(summaryId: string, options: { applyFolderRu
 
     await supabaseAdmin.from('meeting_summary_tags').delete().eq('summary_id', summaryId);
     if (tagRows.length > 0) {
+      // Position preserves extraction.tags' relevance order (most confident
+      // first) so the Drive folder can be based on the primary tag rather
+      // than an alphabetical accident — see drive-export.ts.
       await supabaseAdmin
         .from('meeting_summary_tags')
-        .insert(tagRows.map((t) => ({ summary_id: summaryId, tag_id: t.id })));
+        .insert(tagRows.map((t, i) => ({ summary_id: summaryId, tag_id: t.id, position: i })));
     }
 
     const completeness = computeCompleteness(
