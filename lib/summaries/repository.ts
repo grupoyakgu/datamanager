@@ -4,6 +4,7 @@ import type { SummaryView } from '@/types/database';
 export const SUMMARY_SELECT = `
   id, title, content, meeting_date, meeting_time, source, completeness_score, missing_data,
   language, processing_status, processing_error, drive_doc_id, drive_sync_error, needs_folder_review,
+  drive_folder_override,
   created_at, updated_at,
   email_from, email_subject, email_received_at,
   folder:folders ( id, name ),
@@ -28,6 +29,7 @@ interface RawSummary {
   drive_doc_id: string | null;
   drive_sync_error: string | null;
   needs_folder_review: boolean;
+  drive_folder_override: string | null;
   created_at: string;
   updated_at: string;
   email_from: string | null;
@@ -51,6 +53,10 @@ function one<T>(value: T | T[] | null): T | null {
 export function toSummaryView(raw: unknown, favoriteIds: Set<string> = new Set()): SummaryView {
   const row = raw as RawSummary;
   const extracted = one(row.extracted_data);
+  const tags = (row.meeting_summary_tags ?? [])
+    .map((t) => t.tags)
+    .filter((t): t is { id: string; name: string } => !!t)
+    .sort((a, b) => a.name.localeCompare(b.name));
   return {
     id: row.id,
     title: row.title,
@@ -66,6 +72,8 @@ export function toSummaryView(raw: unknown, favoriteIds: Set<string> = new Set()
     drive_doc_url: row.drive_doc_id ? `https://docs.google.com/document/d/${row.drive_doc_id}/edit` : null,
     drive_sync_error: row.drive_sync_error,
     needs_folder_review: row.needs_folder_review ?? false,
+    drive_folder_override: row.drive_folder_override,
+    drive_folder_name: row.drive_folder_override || tags[0]?.name || null,
     attachments: (row.summary_attachments ?? []).map((a) => ({
       id: a.id,
       filename: a.filename,
@@ -77,10 +85,7 @@ export function toSummaryView(raw: unknown, favoriteIds: Set<string> = new Set()
     email_subject: row.email_subject,
     email_received_at: row.email_received_at,
     folder: one(row.folder),
-    tags: (row.meeting_summary_tags ?? [])
-      .map((t) => t.tags)
-      .filter((t): t is { id: string; name: string } => !!t)
-      .sort((a, b) => a.name.localeCompare(b.name)),
+    tags,
     participants: extracted?.participants ?? [],
     companies: extracted?.companies ?? [],
     topics: extracted?.topics ?? [],

@@ -71,6 +71,9 @@ export default function SummaryDetailPage({ params }: { params: Promise<{ id: st
   const [exportingDrive, setExportingDrive] = useState(false);
   const [deleting, setDeleting] = useState(false);
   const [message, setMessage] = useState<{ text: string; error: boolean } | null>(null);
+  const [editingDriveFolder, setEditingDriveFolder] = useState(false);
+  const [driveFolderInput, setDriveFolderInput] = useState('');
+  const [movingDriveFolder, setMovingDriveFolder] = useState(false);
 
   if (isLoading) return <p className="text-muted-foreground">{t('common.loading')}</p>;
   if (error || !summary) return <EmptyState>{t('summaries.notFound')}</EmptyState>;
@@ -129,6 +132,28 @@ export default function SummaryDetailPage({ params }: { params: Promise<{ id: st
     const current = summary.tags.map((tag) => tag.id);
     const next = current.includes(tagId) ? current.filter((x) => x !== tagId) : [...current, tagId];
     update({ tagIds: next });
+  };
+
+  const openDriveFolderEditor = () => {
+    setDriveFolderInput(summary.drive_folder_name ?? '');
+    setEditingDriveFolder(true);
+  };
+
+  const moveDriveFolder = async () => {
+    setMovingDriveFolder(true);
+    try {
+      await api.post<SummaryView>(`/api/summaries/${summary.id}/drive-folder`, {
+        folderName: driveFolderInput.trim() || null,
+      });
+      invalidate();
+      setEditingDriveFolder(false);
+      setMessage({ text: t('common.saved'), error: false });
+      setTimeout(() => setMessage(null), 1500);
+    } catch (err) {
+      setMessage({ text: err instanceof Error ? err.message : t('common.error'), error: true });
+    } finally {
+      setMovingDriveFolder(false);
+    }
   };
 
   const openDetailsEditor = () => {
@@ -417,6 +442,37 @@ export default function SummaryDetailPage({ params }: { params: Promise<{ id: st
                 </div>
               )}
               {summary.drive_sync_error && <p className="text-xs text-destructive">{summary.drive_sync_error}</p>}
+              <div className="pt-2 border-t border-border space-y-1.5">
+                <div className="flex items-center justify-between gap-3">
+                  <span className="text-muted-foreground">{t('summaries.driveFolder')}</span>
+                  {!editingDriveFolder && (
+                    <div className="flex items-center gap-2">
+                      <span className="text-right truncate">{summary.drive_folder_name ?? t('summaries.noDriveFolder')}</span>
+                      <Button variant="ghost" size="sm" onClick={openDriveFolderEditor}>
+                        {t('summaries.moveDriveFolder')}
+                      </Button>
+                    </div>
+                  )}
+                </div>
+                {editingDriveFolder && (
+                  <div className="space-y-1.5">
+                    <Input
+                      value={driveFolderInput}
+                      onChange={(e) => setDriveFolderInput(e.target.value)}
+                      placeholder={t('summaries.driveFolderPlaceholder')}
+                    />
+                    <p className="text-xs text-muted-foreground">{t('summaries.driveFolderHint')}</p>
+                    <div className="flex justify-end gap-2">
+                      <Button size="sm" variant="ghost" onClick={() => setEditingDriveFolder(false)}>
+                        {t('common.cancel')}
+                      </Button>
+                      <Button size="sm" onClick={moveDriveFolder} disabled={movingDriveFolder}>
+                        {movingDriveFolder ? t('common.loading') : t('summaries.moveDriveFolder')}
+                      </Button>
+                    </div>
+                  </div>
+                )}
+              </div>
               {summary.attachments.length > 0 && (
                 <div className="pt-2 border-t border-border space-y-1">
                   <span className="text-muted-foreground">{t('summaries.attachments')}</span>

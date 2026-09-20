@@ -5,15 +5,11 @@ import {
   deleteFile,
   ensureDomainReaderAccess,
   ensureFolder,
-  ensureFolderPath,
   setDocParents,
   uploadFile,
 } from '@/lib/google/drive';
 import { getAttachmentData } from '@/lib/google/gmail';
 import { GoogleAuthError } from '@/lib/google/oauth';
-
-/** Folder names created under the configured Drive root to hold every exported summary. */
-const BASE_PATH = ['Data Manager', 'Summaries'];
 
 /** True when a Google API error is the "needs re-consent for a new scope" case. */
 export function isScopeError(error: unknown): boolean {
@@ -23,9 +19,10 @@ export function isScopeError(error: unknown): boolean {
 export interface DriveExportResult {
   docId: string;
   docUrl: string;
+  folderName: string;
 }
 export interface DriveExportSkipped {
-  skipped: 'no_connected_writer' | 'not_found';
+  skipped: 'no_connected_writer' | 'not_found' | 'no_tag';
 }
 
 function docUrl(docId: string): string {
@@ -71,14 +68,17 @@ export async function getDriveWriter(): Promise<{ id: string; email: string } | 
 }
 
 /**
- * Export one summary as a Google Doc under Data Manager/Summaries.
+ * Export one summary as a Google Doc directly under the configured Drive
+ * root, inside a folder named after either:
+ *   1. `drive_folder_override`, when the user has manually moved it, or
+ *   2. its first tag (alphabetically, matching the order tags are shown
+ *      in the UI) when it has one or more tags.
+ * The folder is created if it doesn't already exist.
  *
- * - No tags, or exactly one tag with a Drive folder: filed under Summaries
- *   (and the single tag's folder too, if any) — unambiguous placement.
- * - Two or more tags: every tag's folder is still created (so it's ready),
- *   but the Doc stays in Summaries only and `needs_folder_review` is set,
- *   so a person decides where it belongs instead of it landing in several
- *   folders on a guess.
+ * A summary with no tags and no manual override has nothing to file
+ * under, so nothing is written to Drive; `needs_folder_review` is set so
+ * it surfaces on the dashboard until someone tags it, at which point the
+ * existing tag-edit flow re-exports it automatically.
  *
  * Any Gmail attachments on the source email are uploaded alongside it (as
  * their native file type, not converted), sharing one random suffix with
@@ -91,7 +91,7 @@ export async function exportSummaryToDrive(summaryId: string): Promise<DriveExpo
 
   const { data: summary } = await supabaseAdmin
     .from('meeting_summaries')
-    .select('id, title, content, meeting_date, meeting_time, drive_doc_id, drive_file_suffix')
+    .select('id, title, content, meeting_date, meeting_time, drive_doc_id, drive_file_suffix, drive_folder_override')
     .eq('id', summaryId)
     .maybeSingle();
   if (!summary) return { skipped: 'not_found' };
@@ -109,25 +109,22 @@ export async function exportSummaryToDrive(summaryId: string): Promise<DriveExpo
       const tag = row.tags as { name: string } | { name: string }[] | null;
       return Array.isArray(tag) ? tag[0]?.name : tag?.name;
     })
-    .filter((name): name is string => !!name);
+    .filter((name): name is string => !!name)
+    .sort((a, b) => a.localeCompare(b));
   const attachments = attachmentRows ?? [];
+
+  const folderName = summary.drive_folder_override || tagNames[0] || null;
+
+  if (!folderName) {
+    await supabaseAdmin.from('meeting_summaries').update({ needs_folder_review: true }).eq('id', summaryId);
+    return { skipped: 'no_tag' };
+  }
 
   try {
     const settings = await getSettings();
     const driveRoot = settings.drive_root_folder_id || 'root';
-    const baseFolderId = await ensureFolderPath(writer.id, driveRoot, BASE_PATH);
-
-    // Create every matched tag's folder regardless of ambiguity, so it's
-    // ready the moment someone resolves it.
-    const tagFolderIds = new Map<string, string>();
-    for (const tagName of tagNames) {
-      tagFolderIds.set(tagName, await ensureFolder(writer.id, baseFolderId, tagName));
-    }
-
-    const needsFolderReview = tagNames.length > 1;
-    const parents = needsFolderReview
-      ? [baseFolderId]
-      : [baseFolderId, ...tagNames.map((name) => tagFolderIds.get(name)).filter((id): id is string => !!id)];
+    const targetFolderId = await ensureFolder(writer.id, driveRoot, folderName);
+    const parents = [targetFolderId];
 
     // One random suffix per summary, generated once and reused on re-export,
     // so the Doc and its attachments stay visibly grouped by name.
@@ -159,12 +156,12 @@ export async function exportSummaryToDrive(summaryId: string): Promise<DriveExpo
       try {
         await setDocParents(writer.id, doc.id, parents);
       } catch (moveError) {
-        console.error('Failed to move Drive doc', doc.id, 'to match current tags:', moveError);
+        console.error('Failed to move Drive doc', doc.id, 'to', folderName, moveError);
       }
     }
 
     const domain = writer.email.split('@')[1];
-    if (domain) await ensureDomainReaderAccess(writer.id, baseFolderId, domain);
+    if (domain) await ensureDomainReaderAccess(writer.id, targetFolderId, domain);
 
     for (const attachment of attachments) {
       try {
@@ -203,11 +200,11 @@ export async function exportSummaryToDrive(summaryId: string): Promise<DriveExpo
         drive_synced_at: new Date().toISOString(),
         drive_sync_error: null,
         drive_file_suffix: suffix ?? null,
-        needs_folder_review: needsFolderReview,
+        needs_folder_review: false,
       })
       .eq('id', summaryId);
 
-    return { docId: doc.id, docUrl: docUrl(doc.id) };
+    return { docId: doc.id, docUrl: docUrl(doc.id), folderName };
   } catch (error) {
     const message =
       error instanceof GoogleAuthError
@@ -241,6 +238,24 @@ export async function deleteSummaryFromDrive(summaryId: string): Promise<void> {
       console.error('Failed to delete Drive file', fileId, 'for summary', summaryId, error);
     }
   }
+}
+
+/**
+ * Set (or clear, with `folderName: null`) the manual Drive folder override
+ * and re-export so the Doc moves there immediately.
+ */
+export async function moveSummaryToDriveFolder(
+  summaryId: string,
+  folderName: string | null
+): Promise<DriveExportResult | DriveExportSkipped> {
+  const supabaseAdmin = getSupabaseAdmin();
+  const trimmed = folderName?.trim() || null;
+  const { error } = await supabaseAdmin
+    .from('meeting_summaries')
+    .update({ drive_folder_override: trimmed })
+    .eq('id', summaryId);
+  if (error) throw new Error(error.message);
+  return exportSummaryToDrive(summaryId);
 }
 
 export interface ExportAllResult {

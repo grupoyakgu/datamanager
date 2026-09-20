@@ -16,7 +16,7 @@ export const GET = handleRoute(async (request: Request) => {
   const monthStartIso = monthStart.toISOString();
   const monthStartDate = monthStartIso.slice(0, 10);
 
-  const [newSummaries, incomplete, meetingsThisMonth, recent, missing, recentMeetings, actions, favorites] =
+  const [newSummaries, incomplete, meetingsThisMonth, recent, missing, recentMeetings, actions, favorites, needsTagging] =
     await Promise.all([
       supabaseAdmin.from('meeting_summaries').select('id', { count: 'exact', head: true }).gte('created_at', monthStartIso),
       supabaseAdmin.from('meeting_summaries').select('id', { count: 'exact', head: true }).lt('completeness_score', 90),
@@ -36,6 +36,12 @@ export const GET = handleRoute(async (request: Request) => {
         .limit(5),
       supabaseAdmin.from('extracted_data').select('action_items'),
       getFavoriteIds(user.id),
+      supabaseAdmin
+        .from('meeting_summaries')
+        .select(SUMMARY_SELECT)
+        .eq('needs_folder_review', true)
+        .order('created_at', { ascending: false })
+        .limit(5),
     ]);
 
   const openActionItems = (actions.data ?? []).reduce((sum, row) => sum + ((row.action_items as string[]) ?? []).length, 0);
@@ -48,5 +54,6 @@ export const GET = handleRoute(async (request: Request) => {
     recentSummaries: (recent.data ?? []).map((r) => toSummaryView(r, favorites)),
     missingSummaries: (missing.data ?? []).map((r) => toSummaryView(r, favorites)),
     recentMeetings: (recentMeetings.data ?? []).map((r) => toSummaryView(r, favorites)),
+    needsTaggingSummaries: (needsTagging.data ?? []).map((r) => toSummaryView(r, favorites)),
   });
 });

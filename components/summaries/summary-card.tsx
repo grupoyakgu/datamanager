@@ -1,7 +1,7 @@
 'use client';
 
 import Link from 'next/link';
-import { Calendar, Users, Tag as TagIcon, Folder, Star } from 'lucide-react';
+import { AlertTriangle, Calendar, Users, Tag as TagIcon, Folder, Star } from 'lucide-react';
 import { Card, CardContent } from '@/components/ui/card';
 import { CompletenessBadge } from './completeness-badge';
 import { useToggleFavorite } from '@/hooks/use-api';
@@ -46,6 +46,15 @@ export function SummaryCard({ summary, compact = false }: { summary: SummaryView
         <CardContent className={cn('pt-4', compact && 'pb-4')}>
           <div className="flex items-start justify-between gap-3">
             <span className="font-medium line-clamp-1 min-w-0 flex-1">{summary.title}</span>
+            {summary.needs_folder_review && (
+              <span
+                className="shrink-0 inline-flex items-center gap-1 rounded-full bg-amber-100 dark:bg-amber-950/50 text-amber-800 dark:text-amber-300 px-2 py-0.5 text-[11px] font-medium"
+                title={t('summaries.needsFolderReview')}
+              >
+                <AlertTriangle size={12} />
+                {t('summaries.needsTaggingBadge')}
+              </span>
+            )}
             <button
               type="button"
               className="shrink-0 text-muted-foreground hover:text-amber-500"

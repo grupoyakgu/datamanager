@@ -81,15 +81,6 @@ export async function ensureFolder(userId: string, parentId: string, name: strin
   return created.id;
 }
 
-/** Create (or reuse) a chain of nested folders, e.g. ['Data Manager', 'Summaries']. */
-export async function ensureFolderPath(userId: string, rootId: string, segments: string[]): Promise<string> {
-  let current = rootId;
-  for (const segment of segments) {
-    current = await ensureFolder(userId, current, segment);
-  }
-  return current;
-}
-
 /**
  * Create a new Google Doc (when `fileId` is omitted) or replace the content
  * of an existing one, from plain text. Uses a multipart upload so Drive

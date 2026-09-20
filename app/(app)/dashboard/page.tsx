@@ -24,6 +24,7 @@ interface DashboardStats {
   recentSummaries: SummaryView[];
   missingSummaries: SummaryView[];
   recentMeetings: SummaryView[];
+  needsTaggingSummaries: SummaryView[];
 }
 
 function greetingKey() {
@@ -99,6 +100,22 @@ export default function DashboardPage() {
         <StatCard label={t('dashboard.meetingsThisMonth')} value={stats?.meetingsThisMonth ?? 0} description={t('dashboard.tracked')} />
         <StatCard label={t('dashboard.openActions')} value={stats?.openActionItems ?? 0} description={t('dashboard.toComplete')} />
       </div>
+
+      {stats && stats.needsTaggingSummaries.length > 0 && (
+        <Card className="border-amber-300 dark:border-amber-800 bg-amber-50/60 dark:bg-amber-950/20">
+          <CardHeader>
+            <CardTitle className="text-amber-800 dark:text-amber-200">{t('dashboard.needsTagging')}</CardTitle>
+            <p className="text-sm text-amber-700 dark:text-amber-300">{t('dashboard.needsTaggingHint')}</p>
+          </CardHeader>
+          <CardContent>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+              {stats.needsTaggingSummaries.map((s) => (
+                <SummaryCard key={s.id} summary={s} compact />
+              ))}
+            </div>
+          </CardContent>
+        </Card>
+      )}
 
       <Card>
         <CardHeader>

@@ -108,6 +108,8 @@ export interface SummaryView {
   drive_doc_url: string | null;
   drive_sync_error: string | null;
   needs_folder_review: boolean;
+  drive_folder_override: string | null;
+  drive_folder_name: string | null;
   attachments: { id: string; filename: string; driveUrl: string | null }[];
   created_at: string;
   updated_at: string;
