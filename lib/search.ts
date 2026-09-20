@@ -1,6 +1,6 @@
 import { getSupabaseAdmin } from './supabase';
 import { embedText } from './ai/embeddings';
-import { generateText, isAiConfigured } from './ai/gemini';
+import { generateJson, isAiConfigured } from './ai/gemini';
 import { parseNaturalQuery, type ParsedQuery } from './ai/query-parser';
 import { getFavoriteIds, SUMMARY_SELECT, toSummaryView } from './summaries/repository';
 import type { SummaryView } from '@/types/database';
@@ -108,17 +108,26 @@ export async function searchSummaries(filters: SearchFilters, userId: string): P
   };
 }
 
-/**
- * Ask Gemini to synthesize a short answer from the matched summaries, always
- * in the language of the question, regardless of what language each summary
- * was written in (Hebrew, Spanish or English content are all supported).
- */
-async function generateAnswer(question: string, views: SummaryView[]): Promise<string | null> {
-  if (!isAiConfigured() || views.length === 0) return null;
+interface AnswerAndRelevance {
+  answer: string | null;
+  /** null = couldn't judge (AI unavailable/failed) — caller should not filter on it. */
+  relevantIds: string[] | null;
+}
 
-  const context = views
-    .slice(0, 5)
-    .map((v, i) => {
+/**
+ * Ask Gemini to both answer the question and judge which of the candidate
+ * summaries are actually relevant. A fixed embedding-similarity cutoff isn't
+ * reliable for this: two summaries can score similarly close on cosine
+ * distance (same general domain — company meeting notes) while only one
+ * genuinely addresses the question, so relevance is judged by the model
+ * that reads the actual content rather than a numeric threshold.
+ */
+async function generateAnswerAndRelevance(question: string, views: SummaryView[]): Promise<AnswerAndRelevance> {
+  if (!isAiConfigured() || views.length === 0) return { answer: null, relevantIds: null };
+
+  const candidates = views.slice(0, 10);
+  const context = candidates
+    .map((v) => {
       const date = v.meeting_date ? ` (${v.meeting_date})` : '';
       // Topics/decisions/action items come from the AI extraction step, which
       // already read the whole summary — include them regardless of where in
@@ -132,21 +141,28 @@ async function generateAnswer(question: string, views: SummaryView[]): Promise<s
       ]
         .filter((line): line is string => !!line)
         .join('\n');
-      return `Summary ${i + 1} - "${v.title}"${date}:\n${structured ? `${structured}\n\n` : ''}Full content:\n${v.content.slice(0, 8000)}`;
+      return `Summary id="${v.id}" - "${v.title}"${date}:\n${structured ? `${structured}\n\n` : ''}Full content:\n${v.content.slice(0, 8000)}`;
     })
     .join('\n\n---\n\n');
 
-  const system = `You answer questions about company meeting summaries for Grupo Yakgu.
+  const system = `You answer questions about company meeting summaries for Grupo Yakgu, and judge which of the candidate summaries below are actually relevant to the question — some may only be superficially similar (same general topic area, e.g. other meeting notes about the same project) without actually addressing what was asked.
 Answer STRICTLY in the same language the user's question is written in (Hebrew, Spanish or English) — regardless of what language the summaries below happen to be written in; translate and synthesize as needed.
-Use ONLY the information in the summaries provided below; never invent anything. If they don't actually answer the question, say so briefly, still in the question's language.
-Be concise (2-5 sentences). When useful, mention which summary title supports a claim.`;
+Use ONLY the information in the summaries provided below; never invent anything.
+Return ONLY a JSON object with keys:
+- relevant_ids: array of the exact "id" values (as given above) of summaries that genuinely help answer the question. Omit any candidate that isn't actually relevant. Empty array if none are relevant.
+- answer: a concise (2-5 sentences) answer using only the relevant summaries, or — if relevant_ids is empty — a brief note in the question's language that nothing relevant was found.`;
 
   try {
-    const answer = await generateText(system, `Question: ${question}\n\nSummaries:\n${context}`);
-    return answer.trim() || null;
+    const raw = await generateJson(system, `Question: ${question}\n\nCandidate summaries:\n${context}`);
+    const validIds = new Set(candidates.map((v) => v.id));
+    const relevantIds = Array.isArray(raw.relevant_ids)
+      ? (raw.relevant_ids as unknown[]).filter((id): id is string => typeof id === 'string' && validIds.has(id))
+      : null;
+    const answer = typeof raw.answer === 'string' && raw.answer.trim() ? raw.answer.trim() : null;
+    return { answer, relevantIds };
   } catch (error) {
-    console.error('Answer generation failed:', error);
-    return null;
+    console.error('Answer/relevance generation failed:', error);
+    return { answer: null, relevantIds: null };
   }
 }
 
@@ -195,14 +211,15 @@ export async function askSummaries(question: string, userId: string, limit = 20)
       // language pairs: a cross-lingual match (e.g. a Hebrew question
       // against Spanish content) can legitimately score lower than a
       // same-language one for a genuinely relevant result, especially with
-      // these embeddings truncated+renormalized to 1536 dims. Trust the
-      // ranking (already closest-first, capped at `limit`) instead of an
-      // arbitrary floor; only drop results with no meaningful relation at all.
-      const relevant = matches.filter((m) => m.similarity >= 0.05);
-      const views = await loadViews(relevant.map((m) => m.id), userId);
-      const withScore = views.map((v) => ({ ...v, similarity: relevant.find((m) => m.id === v.id)?.similarity }));
-      const answer = await generateAnswer(question, withScore);
-      return { results: withScore, total: withScore.length, mode: 'semantic', interpreted: parsed, answer };
+      // these embeddings truncated+renormalized to 1536 dims. Keep a low
+      // floor just to bound the candidate set fetched from the DB; actual
+      // relevance is judged below by the model reading the real content.
+      const candidates = matches.filter((m) => m.similarity >= 0.05);
+      const views = await loadViews(candidates.map((m) => m.id), userId);
+      const withScore = views.map((v) => ({ ...v, similarity: candidates.find((m) => m.id === v.id)?.similarity }));
+      const { answer, relevantIds } = await generateAnswerAndRelevance(question, withScore);
+      const results = relevantIds ? withScore.filter((v) => relevantIds.includes(v.id)) : withScore;
+      return { results, total: results.length, mode: 'semantic', interpreted: parsed, answer };
     }
   }
 
@@ -218,6 +235,8 @@ export async function askSummaries(question: string, userId: string, limit = 20)
     },
     userId
   );
-  const answer = await generateAnswer(question, textResult.results);
+  // Text search is already a literal keyword match, so its results are kept
+  // as-is; only the answer text is generated here.
+  const { answer } = await generateAnswerAndRelevance(question, textResult.results);
   return { ...textResult, interpreted: parsed, answer };
 }
