@@ -18,6 +18,7 @@ interface DriveResponse {
   files: DriveFile[];
   nextPageToken?: string;
   rootId: string;
+  rootName: string | null;
 }
 
 function fileTypeLabel(mimeType: string): string {
@@ -34,9 +35,9 @@ function fileTypeLabel(mimeType: string): string {
 export default function FilesPage() {
   const t = useT();
   const { user } = useUser();
-  // null = the admin-configured default root. The breadcrumb itself comes
-  // from the server, which walks the folder's real Drive ancestry, so it
-  // always matches Drive's own "My Drive > … > current folder" trail.
+  // null = the admin-configured root. The server clamps every request to
+  // that root's subtree — a folderId outside it is never served, and the
+  // breadcrumb it returns never includes anything above the root either.
   const [folderId, setFolderId] = useState<string | null>(null);
   const [search, setSearch] = useState('');
   const [activeSearch, setActiveSearch] = useState('');
@@ -55,7 +56,7 @@ export default function FilesPage() {
   const notConnected = error instanceof ApiError && error.code === 'drive_not_connected';
   const rootInvalid = error instanceof ApiError && error.code === 'drive_root_invalid';
 
-  const crumbs = [{ id: null as string | null, name: t('files.root') }, ...(data?.ancestors ?? [])];
+  const crumbs = [{ id: null as string | null, name: data?.rootName ?? t('files.root') }, ...(data?.ancestors ?? [])];
 
   return (
     <div>
