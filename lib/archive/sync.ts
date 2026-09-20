@@ -133,12 +133,39 @@ export async function ingestArchiveMessage(mailboxUserId: string, message: Gmail
   if (readyToDelete) {
     try {
       await trashMessage(mailboxUserId, message.id);
+      await supabaseAdmin.from('archived_items').update({ source_trashed: true }).eq('id', archivedItemId);
     } catch (trashError) {
       console.error('Failed to trash processed archive email', message.id, trashError);
     }
   }
 
   return archivedItemId;
+}
+
+/**
+ * Retry trashing the source email for already-archived items that are fully
+ * saved but never got moved to Trash — e.g. because the connected account
+ * didn't yet have the gmail.modify scope when it was first ingested. Safe to
+ * run every sync: a message that's already trashed just stays trashed.
+ */
+async function retryPendingDeletions(mailboxUserId: string): Promise<void> {
+  const supabaseAdmin = getSupabaseAdmin();
+  const { data: pending } = await supabaseAdmin
+    .from('archived_items')
+    .select('id, gmail_message_id')
+    .eq('ingested_by', mailboxUserId)
+    .eq('source_trashed', false);
+
+  for (const item of pending ?? []) {
+    if (!(await allAttachmentsSynced(item.id))) continue;
+    try {
+      await trashMessage(mailboxUserId, item.gmail_message_id);
+      await supabaseAdmin.from('archived_items').update({ source_trashed: true }).eq('id', item.id);
+    } catch (error) {
+      if (error instanceof GoogleAuthError) throw error;
+      console.error('Retry: failed to trash archive email', item.gmail_message_id, error);
+    }
+  }
 }
 
 /** Scan the Archive mailbox for new mail and turn each one into an archived item. */
@@ -154,6 +181,8 @@ export async function syncArchiveMailbox(): Promise<ArchiveSyncResult> {
   const query = buildArchiveQuery(settings.archive_sync_lookback_days);
 
   try {
+    await retryPendingDeletions(mailboxUser.id);
+
     const ids = await listMessageIds(mailboxUser.id, query);
     const { data: known } = await supabaseAdmin
       .from('archived_items')

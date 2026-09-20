@@ -12,7 +12,9 @@ import { useT } from '@/lib/i18n/context';
 const GOOGLE_SCOPES = [
   'email',
   'profile',
-  'https://www.googleapis.com/auth/gmail.readonly',
+  // .modify (superset of .readonly) is required to move a processed Archive
+  // email to Trash after it's safely saved.
+  'https://www.googleapis.com/auth/gmail.modify',
   'https://www.googleapis.com/auth/gmail.send',
   'https://www.googleapis.com/auth/drive',
 ].join(' ');

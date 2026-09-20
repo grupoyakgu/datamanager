@@ -4,7 +4,9 @@ export const GOOGLE_SCOPES = [
   'openid',
   'email',
   'profile',
-  'https://www.googleapis.com/auth/gmail.readonly',
+  // .modify (superset of .readonly) is required to move a processed Archive
+  // email to Trash after it's safely saved.
+  'https://www.googleapis.com/auth/gmail.modify',
   'https://www.googleapis.com/auth/gmail.send',
   // Full Drive access (not drive.readonly / drive.file): the app must be able
   // to find pre-existing folders the admin created by hand (e.g. "Data
