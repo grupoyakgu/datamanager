@@ -153,3 +153,43 @@ export async function recomputeCompleteness(summaryId: string) {
     .eq('id', summaryId);
   return completeness;
 }
+
+export interface AiRetryResult {
+  scanned: number;
+  reprocessed: number;
+  failed: number;
+}
+
+/**
+ * Re-run AI extraction for every summary that previously fell back to
+ * heuristics because Gemini failed (extracted_data.model = 'heuristic' with
+ * an ai_error) — meant to be called once a day so a transient failure (rate
+ * limit, outage) doesn't leave a summary permanently thin. Success clears
+ * the error naturally, since processSummary overwrites extracted_data.
+ * Capped per run (oldest first) to bound one cron invocation's duration and
+ * Gemini call volume against the free-tier rate limit.
+ */
+export async function reprocessFailedAiSummaries(limit = 20): Promise<AiRetryResult> {
+  const supabaseAdmin = getSupabaseAdmin();
+  const { data: rows } = await supabaseAdmin
+    .from('extracted_data')
+    .select('summary_id, extracted_at')
+    .eq('model', 'heuristic')
+    .not('ai_error', 'is', null)
+    .order('extracted_at', { ascending: true })
+    .limit(limit);
+
+  const ids = (rows ?? []).map((r) => r.summary_id as string);
+  let reprocessed = 0;
+  let failed = 0;
+  for (const id of ids) {
+    try {
+      await processSummary(id);
+      reprocessed += 1;
+    } catch (error) {
+      console.error('Daily AI re-run failed for summary', id, error);
+      failed += 1;
+    }
+  }
+  return { scanned: ids.length, reprocessed, failed };
+}
