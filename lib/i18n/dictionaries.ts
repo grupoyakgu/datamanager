@@ -79,7 +79,7 @@ export const en = {
   summaries: {
     title: 'Meeting Summaries',
     subtitle: 'View and manage all meeting summaries',
-    searchPlaceholder: 'Search by content, or ask a question...',
+    searchPlaceholder: 'Ask a question about your summaries...',
     ask: 'Ask',
     filters: 'Filters',
     period: 'Period',
@@ -387,7 +387,7 @@ export const es: DeepStringRecord = {
   summaries: {
     title: 'Resúmenes de reuniones',
     subtitle: 'Consulta y gestiona todos los resúmenes de reuniones',
-    searchPlaceholder: 'Busca por contenido o haz una pregunta...',
+    searchPlaceholder: 'Haz una pregunta sobre tus resúmenes...',
     ask: 'Preguntar',
     filters: 'Filtros',
     period: 'Periodo',

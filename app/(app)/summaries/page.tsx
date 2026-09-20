@@ -124,11 +124,8 @@ function SummariesContent() {
           key={searchParams.get('q') ?? 'search'}
           initialValue={query}
           busy={asking}
-          onSearch={(q) => {
-            setAskResult(null);
-            setQuery(q);
-          }}
-          onAsk={ask}
+          onSearch={ask}
+          showAskButton={false}
         />
 
         <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-3">
