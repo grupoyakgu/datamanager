@@ -49,7 +49,7 @@ export const DEFAULT_SETTINGS: AppSettings = {
   ],
   drive_root_folder_id: 'root',
   drive_writer_email: 'koby@grupoyakgu.es',
-  archive_mailbox: 'archive@grupoyakgu.es',
+  archive_mailbox: 'repo@grupoyakgu.es',
   archive_drive_folder_id: '1N0l2LXwvJZeOpiuPQ_3lnzXrM08WwkMt',
   archive_sync_lookback_days: 365,
 };

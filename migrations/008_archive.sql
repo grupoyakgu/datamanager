@@ -1,9 +1,9 @@
--- 008: Archive module — a dedicated mailbox (archive@grupoyakgu.es) where any
+-- 008: Archive module — a dedicated mailbox (repo@grupoyakgu.es) where any
 -- forwarded (or direct) email becomes an archived item, its attachments
 -- saved to one fixed Drive folder, tagged by its original sender.
 
 INSERT INTO app_settings (key, value) VALUES
-  ('archive_mailbox', '"archive@grupoyakgu.es"'),
+  ('archive_mailbox', '"repo@grupoyakgu.es"'),
   ('archive_drive_folder_id', '"1N0l2LXwvJZeOpiuPQ_3lnzXrM08WwkMt"'),
   ('archive_sync_lookback_days', '365')
 ON CONFLICT (key) DO NOTHING;
