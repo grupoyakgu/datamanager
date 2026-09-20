@@ -120,7 +120,19 @@ async function generateAnswer(question: string, views: SummaryView[]): Promise<s
     .slice(0, 5)
     .map((v, i) => {
       const date = v.meeting_date ? ` (${v.meeting_date})` : '';
-      return `Summary ${i + 1} - "${v.title}"${date}:\n${v.content.slice(0, 1500)}`;
+      // Topics/decisions/action items come from the AI extraction step, which
+      // already read the whole summary — include them regardless of where in
+      // the raw content they were mentioned, since the content itself below
+      // is capped and a relevant detail can otherwise fall past the cutoff.
+      const structured = [
+        v.topics.length > 0 ? `Topics: ${v.topics.join('; ')}` : null,
+        v.decisions.length > 0 ? `Decisions: ${v.decisions.join('; ')}` : null,
+        v.action_items.length > 0 ? `Action items: ${v.action_items.join('; ')}` : null,
+        v.participants.length > 0 ? `Participants: ${v.participants.join(', ')}` : null,
+      ]
+        .filter((line): line is string => !!line)
+        .join('\n');
+      return `Summary ${i + 1} - "${v.title}"${date}:\n${structured ? `${structured}\n\n` : ''}Full content:\n${v.content.slice(0, 8000)}`;
     })
     .join('\n\n---\n\n');
 
