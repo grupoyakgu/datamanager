@@ -169,7 +169,24 @@ export async function askSummaries(question: string, userId: string, limit = 20)
       });
       if (error) throw new Error(error.message);
       const matches = (data ?? []) as { id: string; similarity: number }[];
-      const relevant = matches.filter((m) => m.similarity >= 0.2);
+      console.log('Semantic search scores', {
+        question,
+        semanticQuery: parsed.semanticQuery,
+        dateFrom: parsed.dateFrom,
+        dateTo: parsed.dateTo,
+        participant: parsed.participant,
+        tags: parsed.tags,
+        folder: parsed.folder,
+        scores: matches.map((m) => Number(m.similarity.toFixed(3))),
+      });
+      // A fixed absolute cosine cutoff doesn't generalize well across
+      // language pairs: a cross-lingual match (e.g. a Hebrew question
+      // against Spanish content) can legitimately score lower than a
+      // same-language one for a genuinely relevant result, especially with
+      // these embeddings truncated+renormalized to 1536 dims. Trust the
+      // ranking (already closest-first, capped at `limit`) instead of an
+      // arbitrary floor; only drop results with no meaningful relation at all.
+      const relevant = matches.filter((m) => m.similarity >= 0.05);
       const views = await loadViews(relevant.map((m) => m.id), userId);
       const withScore = views.map((v) => ({ ...v, similarity: relevant.find((m) => m.id === v.id)?.similarity }));
       const answer = await generateAnswer(question, withScore);
