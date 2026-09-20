@@ -20,7 +20,6 @@ interface DashboardStats {
   newSummaries: number;
   incompleteSummaries: number;
   meetingsThisMonth: number;
-  openActionItems: number;
   recentSummaries: SummaryView[];
   missingSummaries: SummaryView[];
   recentMeetings: SummaryView[];
@@ -94,11 +93,10 @@ export default function DashboardPage() {
         </div>
       )}
 
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+      <div className="grid grid-cols-2 lg:grid-cols-3 gap-4">
         <StatCard label={t('dashboard.newSummaries')} value={stats?.newSummaries ?? 0} description={t('dashboard.thisMonth')} />
         <StatCard label={t('dashboard.incomplete')} value={stats?.incompleteSummaries ?? 0} description={t('dashboard.needAttention')} />
         <StatCard label={t('dashboard.meetingsThisMonth')} value={stats?.meetingsThisMonth ?? 0} description={t('dashboard.tracked')} />
-        <StatCard label={t('dashboard.openActions')} value={stats?.openActionItems ?? 0} description={t('dashboard.toComplete')} />
       </div>
 
       {stats && stats.needsTaggingSummaries.length > 0 && (
