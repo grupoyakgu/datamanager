@@ -18,10 +18,15 @@ export function AuthReturnHandler({ fallback = '/login' }: { fallback?: string }
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
+    // Only the explicit "Connect Gmail & Drive" flow (lib/google/connect-client.ts)
+    // tags its redirect this way — a plain sign-in never requests those scopes,
+    // so it must never be mistaken for having granted them.
+    const storeTokens = new URL(window.location.href).searchParams.get('google') === 'connect';
+
     const finish = async (session: Session) => {
       if (done.current) return;
       done.current = true;
-      if (session.provider_token || session.provider_refresh_token) {
+      if (storeTokens && (session.provider_token || session.provider_refresh_token)) {
         try {
           await api.post('/api/auth/google-tokens', {
             provider_token: session.provider_token ?? null,

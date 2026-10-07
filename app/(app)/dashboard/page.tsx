@@ -13,6 +13,8 @@ import { useUser } from '@/hooks/use-user';
 import { useInvalidateSummaries } from '@/hooks/use-api';
 import { api } from '@/lib/api-client';
 import { useT } from '@/lib/i18n/context';
+import { connectGoogleServices } from '@/lib/google/connect-client';
+import { cn } from '@/lib/utils';
 import type { SummaryView } from '@/types/database';
 import type { SyncResult } from '@/lib/summaries/sync';
 
@@ -40,6 +42,8 @@ export default function DashboardPage() {
   const invalidate = useInvalidateSummaries();
   const [syncing, setSyncing] = useState(false);
   const [syncMessage, setSyncMessage] = useState<string | null>(null);
+  const [connecting, setConnecting] = useState(false);
+  const [connectError, setConnectError] = useState<string | null>(null);
 
   const { data: stats, isLoading } = useQuery({
     queryKey: ['dashboard-stats'],
@@ -67,6 +71,17 @@ export default function DashboardPage() {
     }
   };
 
+  const handleConnectGoogle = async () => {
+    setConnecting(true);
+    setConnectError(null);
+    try {
+      await connectGoogleServices();
+    } catch (error) {
+      setConnectError(error instanceof Error ? error.message : t('common.error'));
+      setConnecting(false);
+    }
+  };
+
   const firstName = (user?.name ?? user?.email ?? '').split(' ')[0];
   const hasSummaries = (stats?.recentSummaries.length ?? 0) > 0;
 
@@ -87,11 +102,24 @@ export default function DashboardPage() {
         </div>
       </div>
 
-      {user?.gmail_status === 'authorization_required' && (
-        <div className="rounded-md border border-red-300 bg-red-50 dark:bg-red-950/30 p-3 text-sm text-red-700 dark:text-red-200">
-          🔴 {t('dashboard.gmailWarning')}
+      {user && user.gmail_status !== 'connected' && (
+        <div
+          className={cn(
+            'rounded-md border p-3 text-sm flex flex-wrap items-center justify-between gap-3',
+            user.gmail_status === 'authorization_required'
+              ? 'border-red-300 bg-red-50 dark:bg-red-950/30 text-red-700 dark:text-red-200'
+              : 'border-border bg-muted/50 text-muted-foreground'
+          )}
+        >
+          <span>
+            {user.gmail_status === 'authorization_required' ? `🔴 ${t('dashboard.gmailWarning')}` : t('dashboard.connectGoogleHint')}
+          </span>
+          <Button size="sm" variant="outline" onClick={handleConnectGoogle} disabled={connecting}>
+            {connecting ? t('dashboard.connecting') : t('dashboard.connectGoogle')}
+          </Button>
         </div>
       )}
+      {connectError && <p className="text-sm text-destructive">{connectError}</p>}
 
       <div className="grid grid-cols-2 lg:grid-cols-3 gap-4">
         <StatCard label={t('dashboard.newSummaries')} value={stats?.newSummaries ?? 0} description={t('dashboard.thisMonth')} />

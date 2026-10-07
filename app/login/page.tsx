@@ -9,15 +9,9 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { useUser } from '@/hooks/use-user';
 import { useT } from '@/lib/i18n/context';
 
-const GOOGLE_SCOPES = [
-  'email',
-  'profile',
-  // .modify (superset of .readonly) is required to move a processed Archive
-  // email to Trash after it's safely saved.
-  'https://www.googleapis.com/auth/gmail.modify',
-  'https://www.googleapis.com/auth/gmail.send',
-  'https://www.googleapis.com/auth/drive',
-].join(' ');
+// Sign-in only needs basic profile info — Gmail/Drive access is requested
+// separately and optionally via connectGoogleServices() (see dashboard).
+const GOOGLE_SCOPES = ['email', 'profile'].join(' ');
 
 export default function LoginPage() {
   const t = useT();
@@ -37,12 +31,13 @@ export default function LoginPage() {
     setError(null);
     try {
       // The PKCE verifier lives in this origin's storage, so always return to the same origin.
+      // No `google=connect` marker: this is a plain sign-in, so the callback
+      // won't store a Google token even if Google happens to include one.
       const { error } = await supabase.auth.signInWithOAuth({
         provider: 'google',
         options: {
           redirectTo: `${window.location.origin}/auth/callback`,
           scopes: GOOGLE_SCOPES,
-          queryParams: { access_type: 'offline', prompt: 'consent' },
         },
       });
       if (error) throw error;
