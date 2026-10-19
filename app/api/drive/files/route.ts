@@ -16,6 +16,15 @@ export type DriveFileWithSource = DriveFile & { source: string | null; uploadedB
  * "source" is who the email was originally sent from, "uploadedBy" is the
  * account that actually wrote the file to Drive (the Archive mailbox).
  * Folders aren't tied to a single sender, so they're left blank.
+ *
+ * Also overrides the displayed name with the attachment's own original
+ * filename (archive_attachments.filename) in place of the actual Drive
+ * file name, which is deliberately prefixed with the archived item's title
+ * and a disambiguating suffix (see attachmentDriveName in
+ * lib/archive/drive-export.ts) — useful when browsing Drive directly, but
+ * not what should show as "Name" in this app. Falls back to the raw Drive
+ * name for anything with no matching record (e.g. files an admin uploaded
+ * directly, outside the Archive pipeline).
  */
 async function withSourceInfo(files: DriveFile[]): Promise<DriveFileWithSource[]> {
   const fileIds = files.filter((f) => !f.isFolder).map((f) => f.id);
@@ -24,7 +33,7 @@ async function withSourceInfo(files: DriveFile[]): Promise<DriveFileWithSource[]
   const supabaseAdmin = getSupabaseAdmin();
   const { data: attachmentRows } = await supabaseAdmin
     .from('archive_attachments')
-    .select('drive_file_id, archived_item_id')
+    .select('drive_file_id, archived_item_id, filename')
     .in('drive_file_id', fileIds);
 
   const itemIds = Array.from(new Set((attachmentRows ?? []).map((r) => r.archived_item_id as string)));
@@ -38,17 +47,21 @@ async function withSourceInfo(files: DriveFile[]): Promise<DriveFileWithSource[]
   const { data: userRows } = userIds.length > 0 ? await supabaseAdmin.from('users').select('id, email').in('id', userIds) : { data: [] };
   const emailByUserId = new Map((userRows ?? []).map((u) => [u.id as string, u.email as string]));
 
-  const metaByFileId = new Map<string, { source: string | null; uploadedBy: string | null }>();
+  const metaByFileId = new Map<string, { name: string | null; source: string | null; uploadedBy: string | null }>();
   for (const row of attachmentRows ?? []) {
     const item = itemById.get(row.archived_item_id as string);
     if (!item) continue;
     metaByFileId.set(row.drive_file_id as string, {
+      name: (row.filename as string | null) || null,
       source: (item.original_sender_name as string | null) || (item.original_sender_email as string | null) || null,
       uploadedBy: item.ingested_by ? (emailByUserId.get(item.ingested_by as string) ?? null) : null,
     });
   }
 
-  return files.map((f) => ({ ...f, ...(metaByFileId.get(f.id) ?? { source: null, uploadedBy: null }) }));
+  return files.map((f) => {
+    const meta = metaByFileId.get(f.id);
+    return { ...f, name: meta?.name ?? f.name, source: meta?.source ?? null, uploadedBy: meta?.uploadedBy ?? null };
+  });
 }
 
 /**

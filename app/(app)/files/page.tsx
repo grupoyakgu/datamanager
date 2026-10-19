@@ -26,15 +26,33 @@ interface DriveResponse {
   rootName: string | null;
 }
 
-function fileTypeLabel(mimeType: string): string {
-  const map: Record<string, string> = {
-    'application/vnd.google-apps.folder': 'Folder',
-    'application/vnd.google-apps.document': 'Google Doc',
-    'application/vnd.google-apps.spreadsheet': 'Google Sheet',
-    'application/vnd.google-apps.presentation': 'Google Slides',
-    'application/pdf': 'PDF',
-  };
-  return map[mimeType] ?? mimeType.split('/').pop()?.toUpperCase() ?? mimeType;
+const MIME_TYPE_LABELS: Record<string, string> = {
+  'application/vnd.google-apps.folder': 'Folder',
+  'application/vnd.google-apps.document': 'Google Doc',
+  'application/vnd.google-apps.spreadsheet': 'Google Sheet',
+  'application/vnd.google-apps.presentation': 'Google Slides',
+  'application/pdf': 'PDF',
+  'application/msword': 'Word',
+  'application/vnd.openxmlformats-officedocument.wordprocessingml.document': 'Word',
+  'application/vnd.ms-excel': 'Excel',
+  'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet': 'Excel',
+  'application/vnd.ms-powerpoint': 'PowerPoint',
+  'application/vnd.openxmlformats-officedocument.presentationml.presentation': 'PowerPoint',
+  'text/plain': 'Text',
+  'text/csv': 'CSV',
+  'application/zip': 'ZIP',
+  'image/jpeg': 'Image',
+  'image/png': 'Image',
+  'image/gif': 'Image',
+};
+
+/** A short, friendly type label — the file's own extension (e.g. "DOCX") beats dumping the raw MIME subtype. */
+function fileTypeLabel(file: { mimeType: string; name: string }): string {
+  const mapped = MIME_TYPE_LABELS[file.mimeType];
+  if (mapped) return mapped;
+  const dot = file.name.lastIndexOf('.');
+  if (dot > 0 && dot < file.name.length - 1) return file.name.slice(dot + 1).toUpperCase();
+  return file.mimeType.split('/').pop()?.toUpperCase() ?? file.mimeType;
 }
 
 export default function FilesPage() {
@@ -265,7 +283,7 @@ export default function FilesPage() {
                         </span>
                       )}
                     </TD>
-                    <TD className="hidden md:table-cell text-muted-foreground">{fileTypeLabel(file.mimeType)}</TD>
+                    <TD className="hidden md:table-cell text-muted-foreground">{fileTypeLabel(file)}</TD>
                     <TD className="hidden md:table-cell text-muted-foreground">{file.source ?? '—'}</TD>
                     <TD className="hidden lg:table-cell text-muted-foreground">{file.uploadedBy ?? '—'}</TD>
                     <TD className="hidden sm:table-cell text-muted-foreground">{new Date(file.modifiedTime).toLocaleDateString()}</TD>
