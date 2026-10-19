@@ -36,8 +36,14 @@ export function ArchiveSection() {
   const [ruleFolderId, setRuleFolderId] = useState('');
   const [addingRule, setAddingRule] = useState(false);
   const [ruleError, setRuleError] = useState<string | null>(null);
+  const [newFolderName, setNewFolderName] = useState('');
+  const [creatingFolder, setCreatingFolder] = useState(false);
+  const [createdFolders, setCreatedFolders] = useState<{ id: string; name: string }[]>([]);
 
   const mailboxUser = users?.find((u) => u.email.toLowerCase() === (settings?.archive_mailbox ?? '').toLowerCase());
+  // Folders just created in this session, in case the drive-root-folders
+  // list hasn't refetched yet — kept out of the dropdown once it has.
+  const folderOptions = [...(driveFolders ?? []), ...createdFolders.filter((cf) => !driveFolders?.some((f) => f.id === cf.id))];
 
   const save = async () => {
     setStatus(null);
@@ -75,7 +81,7 @@ export function ArchiveSection() {
 
   const addRule = async () => {
     setRuleError(null);
-    const targetFolder = driveFolders?.find((f) => f.id === ruleFolderId);
+    const targetFolder = folderOptions.find((f) => f.id === ruleFolderId);
     if (!rulePattern.trim() || !targetFolder) return;
     setAddingRule(true);
     try {
@@ -101,6 +107,24 @@ export function ArchiveSection() {
       invalidateAdmin('archive-folder-rules');
     } catch (err) {
       setRuleError(err instanceof Error ? err.message : t('common.error'));
+    }
+  };
+
+  const createFolder = async () => {
+    setRuleError(null);
+    const name = newFolderName.trim();
+    if (!name) return;
+    setCreatingFolder(true);
+    try {
+      const created = await api.post<{ id: string; name: string }>('/api/admin/drive-folders', { name });
+      setCreatedFolders((prev) => [...prev, created]);
+      setRuleFolderId(created.id);
+      setNewFolderName('');
+      invalidateAdmin('drive-root-folders');
+    } catch (err) {
+      setRuleError(err instanceof Error ? err.message : t('common.error'));
+    } finally {
+      setCreatingFolder(false);
     }
   };
 
@@ -186,16 +210,30 @@ export function ArchiveSection() {
             />
             <Select value={ruleFolderId} onChange={(e) => setRuleFolderId(e.target.value)}>
               <option value="">{t('admin.archiveRuleFolderPlaceholder')}</option>
-              {driveFolders?.map((f) => (
+              <option value="__new__">{t('admin.createNewFolder')}</option>
+              {folderOptions.map((f) => (
                 <option key={f.id} value={f.id}>
                   {f.name}
                 </option>
               ))}
             </Select>
-            <Button onClick={addRule} disabled={addingRule || !rulePattern.trim() || !ruleFolderId}>
+            <Button onClick={addRule} disabled={addingRule || !rulePattern.trim() || !ruleFolderId || ruleFolderId === '__new__'}>
               {addingRule ? t('common.loading') : t('admin.addRule')}
             </Button>
           </div>
+          {ruleFolderId === '__new__' && (
+            <div className="flex gap-2">
+              <Input
+                value={newFolderName}
+                onChange={(e) => setNewFolderName(e.target.value)}
+                placeholder={t('admin.newFolderNamePlaceholder')}
+                autoFocus
+              />
+              <Button type="button" variant="outline" onClick={createFolder} disabled={creatingFolder || !newFolderName.trim()}>
+                {creatingFolder ? t('common.loading') : t('common.create')}
+              </Button>
+            </div>
+          )}
         </CardContent>
       </Card>
 

@@ -289,6 +289,8 @@ export const en = {
     archiveFolderRulesEmpty: 'No rules yet — attachments use the Archive Drive folder above.',
     archiveRulePatternPlaceholder: 'Email or domain (e.g. cris@grupoyakgu.es or cm4arquitectos.com)',
     archiveRuleFolderPlaceholder: 'Choose a Drive folder',
+    createNewFolder: '+ Create new folder…',
+    newFolderNamePlaceholder: 'New folder name',
     extractionFields: 'Fields to extract',
     extractionFieldLabels: {
       meeting_date: 'Meeting Date',
@@ -609,6 +611,8 @@ export const es: DeepStringRecord = {
     archiveFolderRulesEmpty: 'Aún no hay reglas — los adjuntos usan la carpeta de Drive del Archivo indicada arriba.',
     archiveRulePatternPlaceholder: 'Correo o dominio (ej. cris@grupoyakgu.es o cm4arquitectos.com)',
     archiveRuleFolderPlaceholder: 'Elige una carpeta de Drive',
+    createNewFolder: '+ Crear nueva carpeta…',
+    newFolderNamePlaceholder: 'Nombre de la nueva carpeta',
     extractionFields: 'Campos a extraer',
     extractionFieldLabels: {
       meeting_date: 'Fecha de la reunión',
