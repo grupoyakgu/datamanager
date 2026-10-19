@@ -10,13 +10,11 @@ import { MissingList } from '@/components/summaries/completeness-badge';
 import { SearchBar } from '@/components/summaries/search-bar';
 import { EmptyState } from '@/components/layout/page-header';
 import { useUser } from '@/hooks/use-user';
-import { useInvalidateSummaries } from '@/hooks/use-api';
 import { api } from '@/lib/api-client';
 import { useT } from '@/lib/i18n/context';
 import { connectGoogleServices } from '@/lib/google/connect-client';
 import { cn } from '@/lib/utils';
 import type { SummaryView } from '@/types/database';
-import type { SyncResult } from '@/lib/summaries/sync';
 
 interface DashboardStats {
   newSummaries: number;
@@ -25,7 +23,6 @@ interface DashboardStats {
   recentSummaries: SummaryView[];
   missingSummaries: SummaryView[];
   recentMeetings: SummaryView[];
-  needsTaggingSummaries: SummaryView[];
 }
 
 function greetingKey() {
@@ -36,12 +33,9 @@ function greetingKey() {
 }
 
 export default function DashboardPage() {
-  const { user, refresh } = useUser();
+  const { user } = useUser();
   const t = useT();
   const router = useRouter();
-  const invalidate = useInvalidateSummaries();
-  const [syncing, setSyncing] = useState(false);
-  const [syncMessage, setSyncMessage] = useState<string | null>(null);
   const [connecting, setConnecting] = useState(false);
   const [connectError, setConnectError] = useState<string | null>(null);
 
@@ -50,26 +44,6 @@ export default function DashboardPage() {
     queryFn: () => api.get<DashboardStats>('/api/dashboard/stats'),
     enabled: !!user,
   });
-
-  const syncNow = async () => {
-    setSyncing(true);
-    setSyncMessage(null);
-    try {
-      const { results } = await api.post<{ results: SyncResult[] }>('/api/gmail/sync', { scope: 'me' });
-      const r = results[0];
-      setSyncMessage(
-        r?.error
-          ? r.error
-          : `${t('dashboard.syncDone')}: ${r?.created ?? 0} ${t('admin.created')}, ${r?.skipped ?? 0} ${t('admin.skipped')}, ${r?.failed ?? 0} ${t('admin.failed')}`
-      );
-      invalidate();
-      refresh();
-    } catch (error) {
-      setSyncMessage(error instanceof Error ? error.message : t('common.error'));
-    } finally {
-      setSyncing(false);
-    }
-  };
 
   const handleConnectGoogle = async () => {
     setConnecting(true);
@@ -87,19 +61,11 @@ export default function DashboardPage() {
 
   return (
     <div className="space-y-6">
-      <div className="flex flex-col sm:flex-row sm:items-end sm:justify-between gap-3">
-        <div>
-          <h1 className="text-2xl md:text-3xl font-bold tracking-tight">
-            {t(greetingKey())}, {firstName}
-          </h1>
-          <p className="text-muted-foreground mt-1">{t('appName')}</p>
-        </div>
-        <div className="flex flex-col items-start sm:items-end gap-1">
-          <Button variant="outline" onClick={syncNow} disabled={syncing}>
-            {syncing ? t('dashboard.syncing') : t('dashboard.syncNow')}
-          </Button>
-          {syncMessage && <span className="text-xs text-muted-foreground">{syncMessage}</span>}
-        </div>
+      <div>
+        <h1 className="text-2xl md:text-3xl font-bold tracking-tight">
+          {t(greetingKey())}, {firstName}
+        </h1>
+        <p className="text-muted-foreground mt-1">{t('appName')}</p>
       </div>
 
       {user && user.gmail_status !== 'connected' && (
@@ -126,22 +92,6 @@ export default function DashboardPage() {
         <StatCard label={t('dashboard.incomplete')} value={stats?.incompleteSummaries ?? 0} description={t('dashboard.needAttention')} />
         <StatCard label={t('dashboard.meetingsThisMonth')} value={stats?.meetingsThisMonth ?? 0} description={t('dashboard.tracked')} />
       </div>
-
-      {stats && stats.needsTaggingSummaries.length > 0 && (
-        <Card className="border-amber-300 dark:border-amber-800 bg-amber-50/60 dark:bg-amber-950/20">
-          <CardHeader>
-            <CardTitle className="text-amber-800 dark:text-amber-200">{t('dashboard.needsTagging')}</CardTitle>
-            <p className="text-sm text-amber-700 dark:text-amber-300">{t('dashboard.needsTaggingHint')}</p>
-          </CardHeader>
-          <CardContent>
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-              {stats.needsTaggingSummaries.map((s) => (
-                <SummaryCard key={s.id} summary={s} compact />
-              ))}
-            </div>
-          </CardContent>
-        </Card>
-      )}
 
       <Card>
         <CardHeader>

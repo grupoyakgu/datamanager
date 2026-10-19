@@ -104,6 +104,8 @@ export async function processSummary(summaryId: string, options: { applyFolderRu
         completeness_score: completeness.score,
         missing_data: completeness.missing,
         language: extraction.language,
+        ai_summary: extraction.aiSummary,
+        hebrew_translation: extraction.hebrewTranslation,
         processing_status: 'processed',
         processing_error: null,
         ...(embedding ? { embedding: JSON.stringify(embedding) } : {}),

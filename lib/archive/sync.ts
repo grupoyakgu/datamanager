@@ -1,15 +1,14 @@
 import { getSupabaseAdmin } from '@/lib/supabase';
 import { getSettings } from '@/lib/settings';
-import { getMessage, listMessageIds, trashMessage, type GmailMessage } from '@/lib/google/gmail';
+import { trashMessage, type GmailMessage } from '@/lib/google/gmail';
 import { GoogleAuthError } from '@/lib/google/oauth';
-import { logAudit } from '@/lib/auth';
 import { findOrCreateTagsByName } from '@/lib/summaries/repository';
 import { splitExtension } from '@/lib/summaries/drive-export';
 import { parseAddress, parseForward, parseInlineTags } from './parse-forward';
 import { exportArchiveAttachments } from './drive-export';
 
 /** Drop attachments whose extension is on the admin-configured exclude list (e.g. png). */
-function filterExcludedAttachments<T extends { filename: string }>(attachments: T[], excludedExtensions: string[]): T[] {
+export function filterExcludedAttachments<T extends { filename: string }>(attachments: T[], excludedExtensions: string[]): T[] {
   const excluded = new Set(excludedExtensions.map((e) => e.toLowerCase().replace(/^\./, '')));
   if (excluded.size === 0) return attachments;
   return attachments.filter((a) => !excluded.has(splitExtension(a.filename).ext.replace(/^\./, '').toLowerCase()));
@@ -184,7 +183,7 @@ export async function ingestArchiveMessage(
  * didn't yet have the gmail.modify scope when it was first ingested. Safe to
  * run every sync: a message that's already trashed just stays trashed.
  */
-async function retryPendingDeletions(mailboxUserId: string): Promise<void> {
+export async function retryPendingArchiveDeletions(mailboxUserId: string): Promise<void> {
   const supabaseAdmin = getSupabaseAdmin();
   const { data: pending } = await supabaseAdmin
     .from('archived_items')
@@ -204,58 +203,7 @@ async function retryPendingDeletions(mailboxUserId: string): Promise<void> {
   }
 }
 
-/** Scan the Archive mailbox for new mail and turn each one into an archived item. */
-export async function syncArchiveMailbox(): Promise<ArchiveSyncResult> {
-  const supabaseAdmin = getSupabaseAdmin();
-  const settings = await getSettings();
-  const mailboxUser = await getArchiveMailboxUser();
-  if (!mailboxUser) {
-    return { mailbox: settings.archive_mailbox, connected: false, scanned: 0, created: 0, skipped: 0, failed: 0 };
-  }
-
-  const result: ArchiveSyncResult = { mailbox: mailboxUser.email, connected: true, scanned: 0, created: 0, skipped: 0, failed: 0 };
-  const query = buildArchiveQuery(settings.archive_sync_lookback_days);
-
-  try {
-    await retryPendingDeletions(mailboxUser.id);
-
-    const ids = await listMessageIds(mailboxUser.id, query);
-    const { data: known } = await supabaseAdmin
-      .from('archived_items')
-      .select('gmail_message_id')
-      .in('gmail_message_id', ids.length > 0 ? ids : ['-']);
-    const knownIds = new Set((known ?? []).map((k) => k.gmail_message_id as string));
-
-    for (const id of ids) {
-      result.scanned += 1;
-      if (knownIds.has(id)) {
-        result.skipped += 1;
-        continue;
-      }
-      try {
-        const message = await getMessage(mailboxUser.id, id);
-        const archivedItemId = await ingestArchiveMessage(mailboxUser.id, message, settings.archive_excluded_extensions);
-        if (!archivedItemId) {
-          result.skipped += 1;
-          continue;
-        }
-        result.created += 1;
-        await logAudit(mailboxUser.id, 'archive.ingested', 'archived_item', archivedItemId, { gmail_message_id: id });
-      } catch (messageError) {
-        if (messageError instanceof GoogleAuthError) throw messageError;
-        console.error('Failed to ingest archive message', id, messageError);
-        result.failed += 1;
-      }
-    }
-
-    await supabaseAdmin
-      .from('google_connections')
-      .update({ last_sync_at: new Date().toISOString() })
-      .eq('user_id', mailboxUser.id);
-  } catch (error) {
-    result.error = error instanceof Error ? error.message : String(error);
-  }
-
-  await logAudit(mailboxUser.id, 'archive.sync', 'user', mailboxUser.id, { ...result });
-  return result;
-}
+// The full mailbox scan (listing messages, routing by attachment presence
+// between this module and lib/summaries/sync.ts, and the shared "last
+// synced" bookkeeping) lives in lib/mailbox-sync.ts, so a message is only
+// ever listed and fetched once per sync regardless of which path it takes.

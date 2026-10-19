@@ -1,13 +1,10 @@
 import { getSupabaseAdmin } from '@/lib/supabase';
-import { getSettings } from '@/lib/settings';
-import { buildSummaryQuery, getMessage, listMessageIds, type GmailMessage } from '@/lib/google/gmail';
-import { GoogleAuthError } from '@/lib/google/oauth';
-import { logAudit } from '@/lib/auth';
-import { getDefaultFolderId } from './repository';
-import { processSummary } from './process';
+import { type GmailMessage } from '@/lib/google/gmail';
+import { parseAddress, parseForward } from '@/lib/archive/parse-forward';
 
-export interface SyncResult {
-  userId: string;
+export interface SummarySyncResult {
+  mailbox: string | null;
+  connected: boolean;
   scanned: number;
   created: number;
   skipped: number;
@@ -15,18 +12,23 @@ export interface SyncResult {
   error?: string;
 }
 
-/** True when the subject contains one of the configured keywords (case-insensitive). */
-export function isSummarySubject(subject: string, keywords: string[]): boolean {
-  const normalized = subject.toLowerCase();
-  return keywords.some((k) => k && normalized.includes(k.toLowerCase()));
-}
-
 function cleanTitle(subject: string): string {
   return subject.replace(/^\s*((re|fwd?|fw)\s*:\s*)+/i, '').trim() || 'Untitled summary';
 }
 
-/** Insert a Gmail message as a summary unless it was already ingested. Returns the new id or null. */
-export async function ingestGmailMessage(userId: string, message: GmailMessage, folderId: string): Promise<string | null> {
+/**
+ * Turn one Gmail message with no attachments, sent or forwarded to the
+ * Archive mailbox, into a summary — unless it was already ingested. Mirrors
+ * ingestArchiveMessage's forward detection: when the body is a forward, the
+ * summary is attributed to the ORIGINAL sender (used for its Drive folder
+ * and "received from" display), not whoever forwarded it internally; a
+ * direct "send to save" email is attributed to its own sender the same way.
+ */
+export async function ingestSummaryMessage(
+  mailboxUserId: string,
+  message: GmailMessage,
+  folderId: string
+): Promise<string | null> {
   const supabaseAdmin = getSupabaseAdmin();
   if (!message.bodyText.trim()) return null;
 
@@ -37,18 +39,30 @@ export async function ingestGmailMessage(userId: string, message: GmailMessage, 
     .limit(1);
   if (existing && existing.length > 0) return null;
 
+  const parsed = await parseForward(message.bodyText);
+  const forwardedBy = parseAddress(message.from);
+  const originalSenderName = parsed.isForward ? parsed.originalSenderName : forwardedBy.name;
+  const originalSenderEmail = parsed.isForward ? parsed.originalSenderEmail : forwardedBy.email;
+  const subject = (parsed.isForward ? parsed.originalSubject : null) || message.subject || 'Untitled';
+
   const { data: inserted, error } = await supabaseAdmin
     .from('meeting_summaries')
     .insert({
-      title: cleanTitle(message.subject),
+      title: cleanTitle(subject),
       content: message.bodyText,
       original_email_id: message.messageIdHeader,
       gmail_message_id: message.id,
       email_from: message.from,
       email_subject: message.subject,
       email_received_at: message.date,
+      is_forward: parsed.isForward,
+      original_sender_name: originalSenderName,
+      original_sender_email: originalSenderEmail,
+      forwarded_by_name: parsed.isForward ? forwardedBy.name : null,
+      forwarded_by_email: parsed.isForward ? forwardedBy.email : null,
+      ingested_by: mailboxUserId,
       folder_id: folderId,
-      created_by: userId,
+      created_by: mailboxUserId,
       source: 'gmail',
       completeness_score: 0,
       missing_data: [],
@@ -58,102 +72,9 @@ export async function ingestGmailMessage(userId: string, message: GmailMessage, 
     .single();
 
   if (error) {
-    // Unique violation means another mailbox delivered the same message concurrently.
+    // Unique violation means this message was already ingested concurrently.
     if (error.code === '23505') return null;
     throw new Error(error.message);
   }
-
-  const summaryId = inserted.id as string;
-  if (message.attachments.length > 0) {
-    const { error: attachmentError } = await supabaseAdmin.from('summary_attachments').insert(
-      message.attachments.map((attachment) => ({
-        summary_id: summaryId,
-        gmail_message_id: message.id,
-        gmail_attachment_id: attachment.attachmentId,
-        ingested_by: userId,
-        filename: attachment.filename,
-        mime_type: attachment.mimeType,
-        size_bytes: attachment.size,
-      }))
-    );
-    if (attachmentError) console.error('Failed to record attachments for summary', summaryId, attachmentError);
-  }
-  return summaryId;
-}
-
-export async function syncUser(userId: string): Promise<SyncResult> {
-  const supabaseAdmin = getSupabaseAdmin();
-  const result: SyncResult = { userId, scanned: 0, created: 0, skipped: 0, failed: 0 };
-  const settings = await getSettings();
-  const query = buildSummaryQuery(settings.summary_keywords, settings.sync_lookback_days);
-
-  try {
-    const folderId = await getDefaultFolderId();
-    const ids = await listMessageIds(userId, query);
-    const { data: known } = await supabaseAdmin
-      .from('meeting_summaries')
-      .select('gmail_message_id')
-      .in('gmail_message_id', ids.length > 0 ? ids : ['-']);
-    const knownIds = new Set((known ?? []).map((k) => k.gmail_message_id as string));
-
-    for (const id of ids) {
-      result.scanned += 1;
-      if (knownIds.has(id)) {
-        result.skipped += 1;
-        continue;
-      }
-      try {
-        const message = await getMessage(userId, id);
-        if (!isSummarySubject(message.subject, settings.summary_keywords)) {
-          result.skipped += 1;
-          continue;
-        }
-        const summaryId = await ingestGmailMessage(userId, message, folderId);
-        if (!summaryId) {
-          result.skipped += 1;
-          continue;
-        }
-        result.created += 1;
-        await logAudit(userId, 'summary.ingested', 'meeting_summary', summaryId, { gmail_message_id: id });
-        try {
-          await processSummary(summaryId);
-        } catch (processError) {
-          console.error('Processing failed for', summaryId, processError);
-          result.failed += 1;
-        }
-      } catch (messageError) {
-        if (messageError instanceof GoogleAuthError) throw messageError;
-        console.error('Failed to ingest message', id, messageError);
-        result.failed += 1;
-      }
-    }
-
-    const now = new Date().toISOString();
-    await supabaseAdmin.from('google_connections').update({ last_sync_at: now, last_error: null }).eq('user_id', userId);
-    await supabaseAdmin.from('users').update({ last_gmail_sync: now }).eq('id', userId);
-  } catch (error) {
-    const message = error instanceof Error ? error.message : String(error);
-    result.error = message;
-    await supabaseAdmin.from('google_connections').update({ last_error: message.slice(0, 500) }).eq('user_id', userId);
-  }
-
-  await logAudit(userId, 'gmail.sync', 'user', userId, { ...result });
-  return result;
-}
-
-export async function syncAllConnectedUsers(): Promise<SyncResult[]> {
-  const { data: connections } = await getSupabaseAdmin()
-    .from('google_connections')
-    .select('user_id, users!inner(status)')
-    .eq('status', 'connected')
-    .not('refresh_token', 'is', null);
-
-  const results: SyncResult[] = [];
-  for (const connection of connections ?? []) {
-    const user = connection.users as unknown as { status: string } | { status: string }[];
-    const status = Array.isArray(user) ? user[0]?.status : user?.status;
-    if (status !== 'active') continue;
-    results.push(await syncUser(connection.user_id as string));
-  }
-  return results;
+  return inserted.id as string;
 }

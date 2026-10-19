@@ -107,9 +107,9 @@ export interface SummaryView {
   processing_error: string | null;
   drive_doc_url: string | null;
   drive_sync_error: string | null;
-  needs_folder_review: boolean;
-  drive_folder_override: string | null;
   drive_folder_name: string | null;
+  ai_summary: string | null;
+  hebrew_translation: string | null;
   ai_extraction_error: string | null;
   attachments: { id: string; filename: string; driveUrl: string | null }[];
   created_at: string;
@@ -117,6 +117,9 @@ export interface SummaryView {
   email_from: string | null;
   email_subject: string | null;
   email_received_at: string | null;
+  is_forward: boolean;
+  original_sender_name: string | null;
+  original_sender_email: string | null;
   folder: { id: string; name: string } | null;
   tags: { id: string; name: string }[];
   participants: string[];

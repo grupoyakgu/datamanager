@@ -11,14 +11,12 @@ export interface CompletenessWeights {
 
 export interface AppSettings {
   admin_emails: string[];
-  summary_keywords: string[];
-  sync_lookback_days: number;
   completeness_weights: CompletenessWeights;
   extraction_fields: string[];
-  drive_root_folder_id: string;
-  /** The single Google account whose Drive holds every exported summary and attachment. */
-  drive_writer_email: string;
-  /** The dedicated mailbox that turns any email sent/forwarded to it into an Archive item. */
+  /**
+   * The dedicated mailbox that turns any email sent/forwarded to it into an
+   * Archive item (if it has attachments) or a Summary (if it doesn't).
+   */
   archive_mailbox: string;
   /**
    * Root folder, in the Archive mailbox's OWN Drive (not any admin's), under
@@ -34,8 +32,6 @@ export interface AppSettings {
 
 export const DEFAULT_SETTINGS: AppSettings = {
   admin_emails: ['koby@grupoyakgu.es'],
-  summary_keywords: ['סיכום', 'summary', 'resumen'],
-  sync_lookback_days: 30,
   completeness_weights: {
     meeting_date: 25,
     participants: 25,
@@ -54,8 +50,6 @@ export const DEFAULT_SETTINGS: AppSettings = {
     'decisions',
     'tags',
   ],
-  drive_root_folder_id: 'root',
-  drive_writer_email: 'koby@grupoyakgu.es',
   archive_mailbox: 'repo@grupoyakgu.es',
   archive_drive_folder_id: 'root',
   archive_sync_lookback_days: 365,

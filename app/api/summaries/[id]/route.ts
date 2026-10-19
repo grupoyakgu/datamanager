@@ -58,31 +58,14 @@ export const PATCH = handleRoute(async (request: Request, { params }: Params) =>
     if (error) throw new Error(error.message);
   }
 
-  // Whether the tag currently backing the Drive folder is still selected
-  // after this edit: if so, saving the tag is all that's needed and the
-  // (slow, Google-API-bound) Drive export is skipped entirely.
-  let driveFolderTagChanged = false;
   if (Array.isArray(body.tagIds)) {
-    const { data: existingSummary } = await supabaseAdmin
-      .from('meeting_summaries')
-      .select('drive_folder_tag_id, drive_folder_override')
-      .eq('id', id)
-      .maybeSingle();
-
     await supabaseAdmin.from('meeting_summary_tags').delete().eq('summary_id', id);
     if (body.tagIds.length > 0) {
-      // Position preserves the given order (the UI keeps existing tags at
-      // the front and appends newly toggled-on ones), so a manually added
-      // tag never displaces an already-established primary/folder tag.
       const { error } = await supabaseAdmin
         .from('meeting_summary_tags')
         .insert(body.tagIds.map((tagId, i) => ({ summary_id: id, tag_id: tagId, position: i })));
       if (error) throw new Error(error.message);
     }
-
-    const stickyTagId = existingSummary?.drive_folder_tag_id ?? null;
-    const hasOverride = !!existingSummary?.drive_folder_override;
-    driveFolderTagChanged = !hasOverride && !(stickyTagId && body.tagIds.includes(stickyTagId));
   }
 
   const extractedPatch: Record<string, unknown> = {};
@@ -118,14 +101,13 @@ export const PATCH = handleRoute(async (request: Request, { params }: Params) =>
     }
   }
 
-  if (driveFolderTagChanged) {
-    // The tag driving the Drive folder changed (added the first tag ever,
-    // or the previously-selected one was removed) — move the Doc now.
-    // Just adding another tag alongside the existing one is a no-op here.
+  if (patch.title) {
+    // The exported file's name depends on the title; re-sync it so Drive
+    // doesn't go stale. Best-effort — the save above already succeeded.
     try {
       await exportSummaryToDrive(id);
     } catch (driveError) {
-      console.error('Drive export failed after tag update for', id, driveError);
+      console.error('Drive export failed after summary update', id, driveError);
     }
   }
 

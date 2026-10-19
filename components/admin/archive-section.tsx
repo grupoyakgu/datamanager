@@ -14,7 +14,7 @@ import { useInvalidateArchive } from '@/hooks/use-archive';
 import { useAdminUsers, useSettings, useArchiveFolderRules, useArchiveDriveFolders, useInvalidateAdmin, splitList } from './use-admin';
 import { GmailStatusBadge } from './users-section';
 import { cn } from '@/lib/utils';
-import type { ArchiveSyncResult } from '@/lib/archive/sync';
+import type { ArchiveSyncResult, SummarySyncResult } from '@/lib/mailbox-sync';
 
 export function ArchiveSection() {
   const t = useT();
@@ -31,7 +31,7 @@ export function ArchiveSection() {
   const [excludedExtensions, setExcludedExtensions] = useState<string | null>(null);
   const [status, setStatus] = useState<string | null>(null);
   const [syncing, setSyncing] = useState(false);
-  const [syncResult, setSyncResult] = useState<ArchiveSyncResult | null>(null);
+  const [syncResult, setSyncResult] = useState<{ archive: ArchiveSyncResult; summaries: SummarySyncResult } | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [rulePattern, setRulePattern] = useState('');
   const [ruleFolderId, setRuleFolderId] = useState('');
@@ -76,10 +76,11 @@ export function ArchiveSection() {
     setSyncing(true);
     setError(null);
     try {
-      const result = await api.post<ArchiveSyncResult>('/api/archive/sync');
+      const result = await api.post<{ archive: ArchiveSyncResult; summaries: SummarySyncResult }>('/api/archive/sync');
       setSyncResult(result);
       invalidateAdmin('admin-users');
       invalidateArchive();
+      queryClient.invalidateQueries({ queryKey: ['summaries'] });
     } catch (err) {
       setError(err instanceof Error ? err.message : t('common.error'));
     } finally {
@@ -330,18 +331,20 @@ export function ArchiveSection() {
           </Button>
           {syncResult && (
             <div className="text-sm space-y-1">
-              {syncResult.connected ? (
+              {syncResult.archive.connected ? (
                 <p className="text-muted-foreground">
-                  {t('admin.archiveMailbox')}: <span className="font-medium">{syncResult.mailbox}</span>
+                  {t('admin.archiveMailbox')}: <span className="font-medium">{syncResult.archive.mailbox}</span>
                 </p>
               ) : (
                 <p className="text-destructive">{t('admin.archiveMailboxNotSignedIn')}</p>
               )}
               <p>
-                {syncResult.scanned} {t('admin.scanned')}, {syncResult.created} {t('admin.created')}, {syncResult.skipped}{' '}
-                {t('admin.skipped')}, {syncResult.failed} {t('admin.failed')}
+                {syncResult.archive.scanned} {t('admin.scanned')} — {syncResult.archive.created} {t('admin.created')} ({t('nav.archive')}),{' '}
+                {syncResult.summaries.created} {t('admin.created')} ({t('nav.summaries')}),{' '}
+                {syncResult.archive.skipped + syncResult.summaries.skipped} {t('admin.skipped')},{' '}
+                {syncResult.archive.failed + syncResult.summaries.failed} {t('admin.failed')}
               </p>
-              {syncResult.error && <p className="text-destructive">{syncResult.error}</p>}
+              {syncResult.archive.error && <p className="text-destructive">{syncResult.archive.error}</p>}
             </div>
           )}
         </CardContent>

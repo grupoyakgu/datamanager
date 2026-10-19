@@ -3,10 +3,11 @@ import type { SummaryView } from '@/types/database';
 
 export const SUMMARY_SELECT = `
   id, title, content, meeting_date, meeting_time, source, completeness_score, missing_data,
-  language, processing_status, processing_error, drive_doc_id, drive_sync_error, needs_folder_review,
-  drive_folder_override, drive_folder_tag_id,
+  language, processing_status, processing_error, drive_doc_id, drive_sync_error, drive_folder_name,
+  ai_summary, hebrew_translation,
   created_at, updated_at,
   email_from, email_subject, email_received_at,
+  is_forward, original_sender_name, original_sender_email,
   folder:folders ( id, name ),
   meeting_summary_tags ( tags ( id, name ), position ),
   extracted_data ( participants, companies, topics, action_items, decisions, model, ai_error ),
@@ -28,14 +29,17 @@ interface RawSummary {
   processing_error: string | null;
   drive_doc_id: string | null;
   drive_sync_error: string | null;
-  needs_folder_review: boolean;
-  drive_folder_override: string | null;
-  drive_folder_tag_id: string | null;
+  drive_folder_name: string | null;
+  ai_summary: string | null;
+  hebrew_translation: string | null;
   created_at: string;
   updated_at: string;
   email_from: string | null;
   email_subject: string | null;
   email_received_at: string | null;
+  is_forward: boolean;
+  original_sender_name: string | null;
+  original_sender_email: string | null;
   folder: { id: string; name: string } | { id: string; name: string }[] | null;
   meeting_summary_tags: { tags: { id: string; name: string } | null; position: number | null }[] | null;
   extracted_data:
@@ -54,17 +58,10 @@ function one<T>(value: T | T[] | null): T | null {
 export function toSummaryView(raw: unknown, favoriteIds: Set<string> = new Set()): SummaryView {
   const row = raw as RawSummary;
   const extracted = one(row.extracted_data);
-  const tagLinks = (row.meeting_summary_tags ?? [])
+  const tags = (row.meeting_summary_tags ?? [])
     .filter((t): t is { tags: { id: string; name: string }; position: number | null } => !!t.tags)
-    .map((t) => ({ tag: t.tags, position: t.position }));
-  const tags = tagLinks.map((t) => t.tag).sort((a, b) => a.name.localeCompare(b.name));
-  // Most relevant/primary tag first (see extraction.ts/process.ts), matching
-  // the same rule drive-export.ts uses to pick the Drive folder.
-  const primaryTagName = [...tagLinks].sort((a, b) => {
-    const pa = a.position ?? Number.MAX_SAFE_INTEGER;
-    const pb = b.position ?? Number.MAX_SAFE_INTEGER;
-    return pa !== pb ? pa - pb : a.tag.name.localeCompare(b.tag.name);
-  })[0]?.tag.name;
+    .map((t) => t.tags)
+    .sort((a, b) => a.name.localeCompare(b.name));
   return {
     id: row.id,
     title: row.title,
@@ -77,15 +74,11 @@ export function toSummaryView(raw: unknown, favoriteIds: Set<string> = new Set()
     language: row.language,
     processing_status: row.processing_status,
     processing_error: row.processing_error,
-    drive_doc_url: row.drive_doc_id ? `https://docs.google.com/document/d/${row.drive_doc_id}/edit` : null,
+    drive_doc_url: row.drive_doc_id ? `https://drive.google.com/file/d/${row.drive_doc_id}/view` : null,
     drive_sync_error: row.drive_sync_error,
-    needs_folder_review: row.needs_folder_review ?? false,
-    drive_folder_override: row.drive_folder_override,
-    drive_folder_name:
-      row.drive_folder_override ||
-      tags.find((t) => t.id === row.drive_folder_tag_id)?.name ||
-      primaryTagName ||
-      null,
+    drive_folder_name: row.drive_folder_name,
+    ai_summary: row.ai_summary,
+    hebrew_translation: row.hebrew_translation,
     ai_extraction_error: extracted?.model === 'heuristic' ? (extracted?.ai_error ?? null) : null,
     attachments: (row.summary_attachments ?? []).map((a) => ({
       id: a.id,
@@ -97,6 +90,9 @@ export function toSummaryView(raw: unknown, favoriteIds: Set<string> = new Set()
     email_from: row.email_from,
     email_subject: row.email_subject,
     email_received_at: row.email_received_at,
+    is_forward: row.is_forward,
+    original_sender_name: row.original_sender_name,
+    original_sender_email: row.original_sender_email,
     folder: one(row.folder),
     tags,
     participants: extracted?.participants ?? [],

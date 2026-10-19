@@ -80,12 +80,6 @@ function collectAttachments(part: GmailPart | undefined, out: GmailAttachment[])
   for (const child of part.parts ?? []) collectAttachments(child, out);
 }
 
-/** Build a Gmail search query for summary emails. Gmail search is case-insensitive. */
-export function buildSummaryQuery(keywords: string[], lookbackDays: number): string {
-  const subject = keywords.map((k) => `subject:"${k.replace(/"/g, '')}"`).join(' OR ');
-  return `(${subject}) newer_than:${lookbackDays}d -in:spam -in:trash`;
-}
-
 export async function listMessageIds(userId: string, query: string, max = 200): Promise<string[]> {
   const ids: string[] = [];
   let pageToken: string | undefined;

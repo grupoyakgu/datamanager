@@ -24,8 +24,8 @@ export const POST = handleRoute(async (request: Request, { params }: { params: P
 
   if ('skipped' in result) {
     const message =
-      result.skipped === 'no_connected_writer'
-        ? 'No admin has connected Google Drive yet. Ask an admin to sign in with Google.'
+      result.skipped === 'no_connected_mailbox'
+        ? 'The repo@ mailbox is not connected to Google yet. Ask an admin to connect it.'
         : 'Summary not found';
     throw new HttpError(result.skipped === 'not_found' ? 404 : 409, message);
   }

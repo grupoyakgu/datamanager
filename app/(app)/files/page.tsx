@@ -14,7 +14,7 @@ import { useArchiveAttachmentsByTags, useArchiveTags, useInvalidateArchive } fro
 import { useT } from '@/lib/i18n/context';
 import { cn } from '@/lib/utils';
 import type { DriveFileWithSource } from '@/app/api/drive/files/route';
-import type { ArchiveSyncResult } from '@/lib/archive/sync';
+import type { ArchiveSyncResult, SummarySyncResult } from '@/lib/mailbox-sync';
 
 interface DriveResponse {
   folder: DriveFileWithSource | null;
@@ -107,15 +107,16 @@ export default function FilesPage() {
     setSyncing(true);
     setSyncMessage(null);
     try {
-      const result = await api.post<ArchiveSyncResult>('/api/archive/sync');
+      const result = await api.post<{ archive: ArchiveSyncResult; summaries: SummarySyncResult }>('/api/archive/sync');
       setSyncMessage(
-        result.error
-          ? result.error
-          : !result.connected
+        result.archive.error
+          ? result.archive.error
+          : !result.archive.connected
             ? t('archive.mailboxNotConnected')
-            : `${result.created} ${t('admin.created')}, ${result.skipped} ${t('admin.skipped')}, ${result.failed} ${t('admin.failed')}`
+            : `${result.archive.created} ${t('nav.archive')}, ${result.summaries.created} ${t('nav.summaries')}, ${result.archive.skipped + result.summaries.skipped} ${t('admin.skipped')}, ${result.archive.failed + result.summaries.failed} ${t('admin.failed')}`
       );
       queryClient.invalidateQueries({ queryKey: ['drive'] });
+      queryClient.invalidateQueries({ queryKey: ['summaries'] });
       invalidateArchive();
     } catch (err) {
       setSyncMessage(err instanceof Error ? err.message : t('common.error'));

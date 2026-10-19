@@ -1,22 +1,20 @@
 import { NextResponse } from 'next/server';
 import { handleRoute, HttpError } from '@/lib/http';
-import { syncAllConnectedUsers } from '@/lib/summaries/sync';
 import { reprocessFailedAiSummaries } from '@/lib/summaries/process';
 
 export const dynamic = 'force-dynamic';
 export const maxDuration = 300;
 
 /**
- * Scheduled daily sync (see vercel.json). Protected by CRON_SECRET. Steps
- * run sequentially rather than in parallel so their Gemini calls don't pile
- * up against the API's per-minute rate limit at the same moment. The Archive
- * mailbox has its own, much more frequent cron — see /api/cron/archive-sync.
+ * Scheduled daily retry (see vercel.json) for summaries that fell back to
+ * heuristics because Gemini failed transiently. Protected by CRON_SECRET.
+ * Ingestion itself runs on the repo@ mailbox's own, more frequent cron — see
+ * /api/cron/archive-sync.
  */
 export const GET = handleRoute(async (request: Request) => {
   const secret = process.env.CRON_SECRET;
   const provided = request.headers.get('authorization')?.replace('Bearer ', '') ?? new URL(request.url).searchParams.get('secret');
   if (!secret || provided !== secret) throw new HttpError(401, 'Unauthorized');
-  const results = await syncAllConnectedUsers();
   const aiRetry = await reprocessFailedAiSummaries();
-  return NextResponse.json({ results, aiRetry, ran_at: new Date().toISOString() });
+  return NextResponse.json({ aiRetry, ran_at: new Date().toISOString() });
 });

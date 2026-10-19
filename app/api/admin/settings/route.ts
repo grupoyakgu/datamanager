@@ -15,13 +15,6 @@ export const PATCH = handleRoute(async (request: Request) => {
   const { user } = await requireAdmin(request);
   const body = await readJson<Partial<AppSettings>>(request);
 
-  if (typeof body.drive_root_folder_id === 'string') {
-    try {
-      body.drive_root_folder_id = await resolveDriveRootId(user.id, body.drive_root_folder_id);
-    } catch (error) {
-      throw new HttpError(400, error instanceof Error ? error.message : 'Invalid Drive folder');
-    }
-  }
   if (typeof body.archive_drive_folder_id === 'string') {
     try {
       const resolved = await resolveDriveRootId(user.id, body.archive_drive_folder_id);

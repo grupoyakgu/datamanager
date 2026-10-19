@@ -82,16 +82,10 @@ export async function searchSummaries(filters: SearchFilters, userId: string): P
     restrictIds = restrictIds ? restrictIds.filter((id) => ids.includes(id)) : ids;
   }
   if (filters.driveFolderName) {
-    // A summary's Drive folder is its primary tag (drive_folder_tag_id) or,
-    // when set, its manual override — not the legacy internal folder_id.
-    const { data: tagMatch } = await supabaseAdmin.from('tags').select('id').eq('name', filters.driveFolderName).maybeSingle();
-    const [{ data: overrideRows }, tagRowsResult] = await Promise.all([
-      supabaseAdmin.from('meeting_summaries').select('id').eq('drive_folder_override', filters.driveFolderName),
-      tagMatch ? supabaseAdmin.from('meeting_summaries').select('id').eq('drive_folder_tag_id', tagMatch.id) : Promise.resolve({ data: [] }),
-    ]);
-    const ids = Array.from(
-      new Set([...(overrideRows ?? []).map((r) => r.id as string), ...(tagRowsResult.data ?? []).map((r) => r.id as string)])
-    );
+    // A summary's Drive folder is its sender's email domain (see
+    // lib/summaries/drive-export.ts), stored directly on the row.
+    const { data: rows } = await supabaseAdmin.from('meeting_summaries').select('id').eq('drive_folder_name', filters.driveFolderName);
+    const ids = (rows ?? []).map((r) => r.id as string);
     restrictIds = restrictIds ? restrictIds.filter((id) => ids.includes(id)) : ids;
   }
   if (restrictIds && restrictIds.length === 0) {

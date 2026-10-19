@@ -20,6 +20,10 @@ export interface ExtractionResult {
   raw: Record<string, unknown>;
   /** Set when Gemini was configured but the call failed, so heuristics were used instead. */
   aiError: string | null;
+  /** A written summary (key issues for the team, action items, decisions), in the text's own language. */
+  aiSummary: string | null;
+  /** Hebrew translation of aiSummary (or a copy of it, when already Hebrew). */
+  hebrewTranslation: string | null;
 }
 
 function normalize(value: string): string {
@@ -148,6 +152,8 @@ export async function extractFromSummary(params: {
     model: 'heuristic',
     raw: {},
     aiError,
+    aiSummary: null,
+    hebrewTranslation: null,
   });
 
   if (!isAiConfigured()) return heuristicResult();
@@ -168,6 +174,8 @@ Return ONLY a JSON object with these keys:
 - tags: array of tag names chosen ONLY from this dictionary, when the tag is mentioned or the content clearly relates to it. Order the array from most to least relevant/confident — the summary's Drive file gets filed under the first tag, so put the single best-fitting tag first:
 ${tagDictionary || '(empty)'}
 - language: ISO 639-1 code of the summary text (he, es, en, ...).
+- ai_summary: a clear written summary of the email, in its own original language, organized under three short headers: "Key issues for the team", "Action items", "Decisions". Keep each section concise (a few sentences or bullet points); omit a header if there's genuinely nothing for it.
+- hebrew_translation: a Hebrew translation of ai_summary. If the text's own language is already Hebrew, repeat ai_summary unchanged here.
 Requested fields: ${fields.join(', ')}. Return empty arrays or null for fields you cannot determine. Do not invent information.`;
 
   let raw: Record<string, unknown>;
@@ -203,5 +211,7 @@ Requested fields: ${fields.join(', ')}. Return empty arrays or null for fields y
     model: CHAT_MODEL,
     aiError: null,
     raw,
+    aiSummary: typeof raw.ai_summary === 'string' && raw.ai_summary.trim() ? raw.ai_summary.trim() : null,
+    hebrewTranslation: typeof raw.hebrew_translation === 'string' && raw.hebrew_translation.trim() ? raw.hebrew_translation.trim() : null,
   };
 }
