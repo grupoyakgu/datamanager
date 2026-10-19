@@ -10,8 +10,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { api } from '@/lib/api-client';
 import { useT } from '@/lib/i18n/context';
 import { useInvalidateArchive } from '@/hooks/use-archive';
-import { useDriveRootFolders } from '@/hooks/use-api';
-import { useAdminUsers, useSettings, useArchiveFolderRules, useInvalidateAdmin, splitList } from './use-admin';
+import { useAdminUsers, useSettings, useArchiveFolderRules, useArchiveDriveFolders, useInvalidateAdmin, splitList } from './use-admin';
 import { GmailStatusBadge } from './users-section';
 import { cn } from '@/lib/utils';
 import type { ArchiveSyncResult } from '@/lib/archive/sync';
@@ -21,7 +20,7 @@ export function ArchiveSection() {
   const { data: users } = useAdminUsers();
   const { data: settings } = useSettings();
   const { data: folderRules } = useArchiveFolderRules();
-  const { data: driveFolders } = useDriveRootFolders();
+  const { data: driveFolders } = useArchiveDriveFolders();
   const invalidateAdmin = useInvalidateAdmin();
   const invalidateArchive = useInvalidateArchive();
   const [mailbox, setMailbox] = useState<string | null>(null);
@@ -41,7 +40,8 @@ export function ArchiveSection() {
   const [createdFolders, setCreatedFolders] = useState<{ id: string; name: string }[]>([]);
 
   const mailboxUser = users?.find((u) => u.email.toLowerCase() === (settings?.archive_mailbox ?? '').toLowerCase());
-  // Folders just created in this session, in case the drive-root-folders
+  const mailboxConnected = mailboxUser?.gmail_status === 'connected';
+  // Folders just created in this session, in case the archive-drive-folders
   // list hasn't refetched yet — kept out of the dropdown once it has.
   const folderOptions = [...(driveFolders ?? []), ...createdFolders.filter((cf) => !driveFolders?.some((f) => f.id === cf.id))];
 
@@ -116,11 +116,11 @@ export function ArchiveSection() {
     if (!name) return;
     setCreatingFolder(true);
     try {
-      const created = await api.post<{ id: string; name: string }>('/api/admin/drive-folders', { name });
+      const created = await api.post<{ id: string; name: string }>('/api/admin/archive-drive-folders', { name });
       setCreatedFolders((prev) => [...prev, created]);
       setRuleFolderId(created.id);
       setNewFolderName('');
-      invalidateAdmin('drive-root-folders');
+      invalidateAdmin('archive-drive-folders');
     } catch (err) {
       setRuleError(err instanceof Error ? err.message : t('common.error'));
     } finally {
@@ -186,6 +186,9 @@ export function ArchiveSection() {
           <p className="text-sm text-muted-foreground">{t('admin.archiveFolderRulesHint')}</p>
         </CardHeader>
         <CardContent className="space-y-4 max-w-2xl">
+          {!mailboxConnected && (
+            <p className="text-sm text-amber-600 dark:text-amber-400">{t('admin.archiveFolderRulesNeedsConnection')}</p>
+          )}
           {ruleError && <p className="text-sm text-destructive">{ruleError}</p>}
           <div className="space-y-2">
             {(folderRules ?? []).length === 0 && (

@@ -1,5 +1,6 @@
 import { getSupabaseAdmin } from '@/lib/supabase';
 import { getSettings } from '@/lib/settings';
+import { ensureFolder, ensureDomainReaderAccess } from '@/lib/google/drive';
 import type { ArchiveFolderRule } from '@/types/database';
 
 export async function listArchiveFolderRules(): Promise<ArchiveFolderRule[]> {
@@ -15,22 +16,60 @@ export async function listArchiveFolderRules(): Promise<ArchiveFolderRule[]> {
 }
 
 /**
- * The Drive folder an archived item's attachments should be saved into,
- * chosen by the admin-managed sender/domain rules (an exact email match
- * wins over a domain match), falling back to the single fixed Archive
- * Drive folder when nothing matches.
+ * The Drive folder an archived item's attachments should be saved into, all
+ * under the Archive mailbox's OWN Drive (repo@grupoyakgu.es) — not any
+ * admin's personal Drive — so the mailbox is a single shared, general-use
+ * Drive for the whole org.
+ *
+ * An exact email rule wins over a domain rule. When nothing matches, a new
+ * folder is created (named after the sender's domain, or their full email
+ * when there is none) directly under the Archive Drive root, and persisted
+ * as a new domain rule so later emails from the same sender reuse it
+ * instead of a new folder being created every time.
+ *
+ * Whichever folder is used — admin-picked, admin-created, or just
+ * auto-created here — is also given org-domain-wide read access, so any
+ * signed-in user can open the file from their own Google account,
+ * regardless of who is logged into the app.
  */
-export async function resolveArchiveFolderId(originalSenderEmail: string | null): Promise<string> {
+export async function resolveArchiveFolderId(mailboxUserId: string, originalSenderEmail: string | null): Promise<string> {
   const settings = await getSettings();
-  if (!originalSenderEmail) return settings.archive_drive_folder_id;
+  const archiveRoot = settings.archive_drive_folder_id || 'root';
+  const supabaseAdmin = getSupabaseAdmin();
 
-  const email = originalSenderEmail.toLowerCase();
-  const domain = email.split('@')[1] ?? null;
-  const rules = await listArchiveFolderRules();
+  const email = originalSenderEmail?.toLowerCase() ?? null;
+  const senderDomain = email?.split('@')[1] || null;
 
-  const emailMatch = rules.find((r) => r.pattern_type === 'email' && r.pattern === email);
-  if (emailMatch) return emailMatch.drive_folder_id;
+  let folderId = archiveRoot;
 
-  const domainMatch = domain ? rules.find((r) => r.pattern_type === 'domain' && r.pattern === domain) : undefined;
-  return domainMatch?.drive_folder_id ?? settings.archive_drive_folder_id;
+  if (email) {
+    const rules = await listArchiveFolderRules();
+    const matched =
+      rules.find((r) => r.pattern_type === 'email' && r.pattern === email) ??
+      (senderDomain ? rules.find((r) => r.pattern_type === 'domain' && r.pattern === senderDomain) : undefined);
+
+    if (matched) {
+      folderId = matched.drive_folder_id;
+    } else {
+      const pattern = senderDomain ?? email;
+      const patternType: 'email' | 'domain' = senderDomain ? 'domain' : 'email';
+      folderId = await ensureFolder(mailboxUserId, archiveRoot, pattern);
+      const { error } = await supabaseAdmin
+        .from('archive_folder_rules')
+        .insert({ pattern, pattern_type: patternType, drive_folder_id: folderId, drive_folder_name: pattern });
+      if (error && error.code !== '23505' && error.code !== '42P01') {
+        console.error('Failed to persist auto-created archive folder rule', pattern, error);
+      }
+    }
+  }
+
+  try {
+    const { data: mailboxUser } = await supabaseAdmin.from('users').select('email').eq('id', mailboxUserId).maybeSingle();
+    const domain = mailboxUser?.email ? (mailboxUser.email as string).split('@')[1] : null;
+    if (domain) await ensureDomainReaderAccess(mailboxUserId, folderId, domain);
+  } catch (shareError) {
+    console.error('Failed to grant domain access on archive folder', folderId, shareError);
+  }
+
+  return folderId;
 }

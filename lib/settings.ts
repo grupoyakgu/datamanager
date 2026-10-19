@@ -20,7 +20,12 @@ export interface AppSettings {
   drive_writer_email: string;
   /** The dedicated mailbox that turns any email sent/forwarded to it into an Archive item. */
   archive_mailbox: string;
-  /** Fixed Drive folder every Archive attachment is saved into. */
+  /**
+   * Root folder, in the Archive mailbox's OWN Drive (not any admin's), under
+   * which per-sender folders are organized — admin-defined rules and
+   * auto-created ones alike (see lib/archive/folder-rules.ts). Defaults to
+   * 'root' (that account's own My Drive), which always exists.
+   */
   archive_drive_folder_id: string;
   archive_sync_lookback_days: number;
   /** Attachment file extensions (no dot, lowercase) never saved to the Archive. */
@@ -52,7 +57,7 @@ export const DEFAULT_SETTINGS: AppSettings = {
   drive_root_folder_id: 'root',
   drive_writer_email: 'koby@grupoyakgu.es',
   archive_mailbox: 'repo@grupoyakgu.es',
-  archive_drive_folder_id: '1N0l2LXwvJZeOpiuPQ_3lnzXrM08WwkMt',
+  archive_drive_folder_id: 'root',
   archive_sync_lookback_days: 365,
   archive_excluded_extensions: ['png'],
 };

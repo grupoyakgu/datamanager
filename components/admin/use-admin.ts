@@ -24,6 +24,14 @@ export function useArchiveFolderRules() {
   });
 }
 
+/** Folders directly under the Archive Drive root (repo@'s own Drive) — used to populate the folder-rule picker. */
+export function useArchiveDriveFolders() {
+  return useQuery({
+    queryKey: ['archive-drive-folders'],
+    queryFn: () => api.get<{ id: string; name: string }[]>('/api/admin/archive-drive-folders'),
+  });
+}
+
 export function useInvalidateAdmin() {
   const queryClient = useQueryClient();
   return (...keys: string[]) => {
