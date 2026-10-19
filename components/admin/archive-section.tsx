@@ -1,6 +1,7 @@
 'use client';
 
 import { useState } from 'react';
+import { useQueryClient } from '@tanstack/react-query';
 import { RefreshCw, Trash2, Pencil, Check, X } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -23,6 +24,7 @@ export function ArchiveSection() {
   const { data: driveFolders } = useArchiveDriveFolders();
   const invalidateAdmin = useInvalidateAdmin();
   const invalidateArchive = useInvalidateArchive();
+  const queryClient = useQueryClient();
   const [mailbox, setMailbox] = useState<string | null>(null);
   const [folder, setFolder] = useState<string | null>(null);
   const [lookback, setLookback] = useState<string | null>(null);
@@ -139,9 +141,10 @@ export function ArchiveSection() {
     setClearError(null);
     setClearResult(null);
     try {
-      const result = await api.post<{ deleted: number }>('/api/admin/archive/clear');
-      setClearResult(`${result.deleted} ${t('admin.archiveClearDeleted')}`);
+      const result = await api.post<{ deleted: number; filesDeleted: number }>('/api/admin/archive/clear');
+      setClearResult(`${result.deleted} ${t('admin.archiveClearDeleted')}, ${result.filesDeleted} ${t('admin.archiveClearFilesDeleted')}`);
       invalidateArchive();
+      queryClient.invalidateQueries({ queryKey: ['drive'] });
     } catch (err) {
       setClearError(err instanceof Error ? err.message : t('common.error'));
     } finally {

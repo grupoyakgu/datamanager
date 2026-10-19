@@ -166,6 +166,35 @@ export async function deleteFile(userId: string, fileId: string): Promise<void> 
 }
 
 /**
+ * Recursively delete every FILE (not folder) under `folderId`, leaving the
+ * folder structure itself intact. Walks Drive directly rather than any
+ * app database records, so it's correct even when those have drifted out
+ * of sync with what's actually in Drive. Returns how many files were
+ * deleted. Best-effort per file: one failure doesn't stop the rest.
+ */
+export async function clearFolderContents(userId: string, folderId: string): Promise<number> {
+  let deleted = 0;
+  let pageToken: string | undefined;
+  do {
+    const listing = await listFolder(userId, folderId, pageToken);
+    for (const file of listing.files) {
+      try {
+        if (file.isFolder) {
+          deleted += await clearFolderContents(userId, file.id);
+        } else {
+          await deleteFile(userId, file.id);
+          deleted += 1;
+        }
+      } catch (error) {
+        console.error('Failed to delete Drive file while clearing folder', file.id, error);
+      }
+    }
+    pageToken = listing.nextPageToken;
+  } while (pageToken);
+  return deleted;
+}
+
+/**
  * Make a file's Drive parents match `desiredParents` exactly, adding and
  * removing only what's needed. Used to move an exported summary between tag
  * folders when its tags change, without duplicating or losing it elsewhere.
