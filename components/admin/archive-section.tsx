@@ -1,7 +1,7 @@
 'use client';
 
 import { useState } from 'react';
-import { RefreshCw, Trash2 } from 'lucide-react';
+import { RefreshCw, Trash2, Pencil, Check, X } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -38,6 +38,12 @@ export function ArchiveSection() {
   const [newFolderName, setNewFolderName] = useState('');
   const [creatingFolder, setCreatingFolder] = useState(false);
   const [createdFolders, setCreatedFolders] = useState<{ id: string; name: string }[]>([]);
+  const [editingRuleId, setEditingRuleId] = useState<string | null>(null);
+  const [editRuleName, setEditRuleName] = useState('');
+  const [savingRuleName, setSavingRuleName] = useState(false);
+  const [clearing, setClearing] = useState(false);
+  const [clearError, setClearError] = useState<string | null>(null);
+  const [clearResult, setClearResult] = useState<string | null>(null);
 
   const mailboxUser = users?.find((u) => u.email.toLowerCase() === (settings?.archive_mailbox ?? '').toLowerCase());
   const mailboxConnected = mailboxUser?.gmail_status === 'connected';
@@ -107,6 +113,39 @@ export function ArchiveSection() {
       invalidateAdmin('archive-folder-rules');
     } catch (err) {
       setRuleError(err instanceof Error ? err.message : t('common.error'));
+    }
+  };
+
+  const saveRuleName = async (id: string) => {
+    const name = editRuleName.trim();
+    if (!name) return;
+    setRuleError(null);
+    setSavingRuleName(true);
+    try {
+      await api.patch(`/api/admin/archive-folder-rules/${id}`, { driveFolderName: name });
+      invalidateAdmin('archive-folder-rules');
+      invalidateAdmin('archive-drive-folders');
+      setEditingRuleId(null);
+    } catch (err) {
+      setRuleError(err instanceof Error ? err.message : t('common.error'));
+    } finally {
+      setSavingRuleName(false);
+    }
+  };
+
+  const clearArchive = async () => {
+    if (!confirm(t('admin.archiveClearConfirm'))) return;
+    setClearing(true);
+    setClearError(null);
+    setClearResult(null);
+    try {
+      const result = await api.post<{ deleted: number }>('/api/admin/archive/clear');
+      setClearResult(`${result.deleted} ${t('admin.archiveClearDeleted')}`);
+      invalidateArchive();
+    } catch (err) {
+      setClearError(err instanceof Error ? err.message : t('common.error'));
+    } finally {
+      setClearing(false);
     }
   };
 
@@ -198,10 +237,39 @@ export function ArchiveSection() {
               <div key={rule.id} className="flex items-center gap-2 rounded-md border bg-card px-3 py-2 text-sm">
                 <span className="font-medium truncate">{rule.pattern}</span>
                 <span className="text-muted-foreground">→</span>
-                <span className="truncate">{rule.drive_folder_name}</span>
-                <Button size="sm" variant="ghost" className="ml-auto text-destructive" onClick={() => deleteRule(rule.id)}>
-                  <Trash2 size={16} />
-                </Button>
+                {editingRuleId === rule.id ? (
+                  <>
+                    <Input
+                      value={editRuleName}
+                      onChange={(e) => setEditRuleName(e.target.value)}
+                      className="h-8 max-w-[14rem]"
+                      autoFocus
+                    />
+                    <Button size="sm" variant="ghost" onClick={() => saveRuleName(rule.id)} disabled={savingRuleName || !editRuleName.trim()}>
+                      <Check size={16} />
+                    </Button>
+                    <Button size="sm" variant="ghost" onClick={() => setEditingRuleId(null)}>
+                      <X size={16} />
+                    </Button>
+                  </>
+                ) : (
+                  <>
+                    <span className="truncate">{rule.drive_folder_name}</span>
+                    <Button
+                      size="sm"
+                      variant="ghost"
+                      onClick={() => {
+                        setEditingRuleId(rule.id);
+                        setEditRuleName(rule.drive_folder_name);
+                      }}
+                    >
+                      <Pencil size={16} />
+                    </Button>
+                    <Button size="sm" variant="ghost" className="ml-auto text-destructive" onClick={() => deleteRule(rule.id)}>
+                      <Trash2 size={16} />
+                    </Button>
+                  </>
+                )}
               </div>
             ))}
           </div>
@@ -266,6 +334,21 @@ export function ArchiveSection() {
               {syncResult.error && <p className="text-destructive">{syncResult.error}</p>}
             </div>
           )}
+        </CardContent>
+      </Card>
+
+      <Card className="border-destructive/40">
+        <CardHeader>
+          <CardTitle className="text-destructive">{t('admin.archiveClearTitle')}</CardTitle>
+          <p className="text-sm text-muted-foreground">{t('admin.archiveClearHint')}</p>
+        </CardHeader>
+        <CardContent className="space-y-3">
+          {clearError && <p className="text-sm text-destructive">{clearError}</p>}
+          {clearResult && <p className="text-sm text-muted-foreground">{clearResult}</p>}
+          <Button variant="outline" className="text-destructive hover:text-destructive" onClick={clearArchive} disabled={clearing}>
+            <Trash2 size={16} className="mr-1" />
+            {clearing ? t('common.loading') : t('admin.archiveClearButton')}
+          </Button>
         </CardContent>
       </Card>
     </div>

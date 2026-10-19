@@ -1,7 +1,7 @@
 'use client';
 
 import { useState } from 'react';
-import { useQuery } from '@tanstack/react-query';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { Folder, FileText, ExternalLink, ChevronRight, Search, RefreshCw } from 'lucide-react';
 import { PageHeader, EmptyState } from '@/components/layout/page-header';
 import { Input } from '@/components/ui/input';
@@ -11,16 +11,16 @@ import { Table, THead, TBody, TR, TH, TD } from '@/components/ui/table';
 import { api, ApiError } from '@/lib/api-client';
 import { useUser } from '@/hooks/use-user';
 import { useTags } from '@/hooks/use-api';
-import { useArchiveAttachmentsByTags } from '@/hooks/use-archive';
+import { useArchiveAttachmentsByTags, useInvalidateArchive } from '@/hooks/use-archive';
 import { useT } from '@/lib/i18n/context';
 import { cn } from '@/lib/utils';
-import type { DriveFile } from '@/lib/google/drive';
+import type { DriveFileWithSource } from '@/app/api/drive/files/route';
 import type { ArchiveSyncResult } from '@/lib/archive/sync';
 
 interface DriveResponse {
-  folder: DriveFile | null;
+  folder: DriveFileWithSource | null;
   ancestors: { id: string; name: string }[];
-  files: DriveFile[];
+  files: DriveFileWithSource[];
   nextPageToken?: string;
   rootId: string;
   rootName: string | null;
@@ -40,6 +40,8 @@ function fileTypeLabel(mimeType: string): string {
 export default function FilesPage() {
   const t = useT();
   const { user } = useUser();
+  const queryClient = useQueryClient();
+  const invalidateArchive = useInvalidateArchive();
   // null = the admin-configured root. The server clamps every request to
   // that root's subtree — a folderId outside it is never served, and the
   // breadcrumb it returns never includes anything above the root either.
@@ -84,6 +86,8 @@ export default function FilesPage() {
             ? t('archive.mailboxNotConnected')
             : `${result.created} ${t('admin.created')}, ${result.skipped} ${t('admin.skipped')}, ${result.failed} ${t('admin.failed')}`
       );
+      queryClient.invalidateQueries({ queryKey: ['drive'] });
+      invalidateArchive();
     } catch (err) {
       setSyncMessage(err instanceof Error ? err.message : t('common.error'));
     } finally {
@@ -237,7 +241,8 @@ export default function FilesPage() {
                 <TR>
                   <TH>{t('common.name')}</TH>
                   <TH className="hidden md:table-cell">{t('files.type')}</TH>
-                  <TH className="hidden md:table-cell">{t('files.owner')}</TH>
+                  <TH className="hidden md:table-cell">{t('files.source')}</TH>
+                  <TH className="hidden lg:table-cell">{t('files.uploadedBy')}</TH>
                   <TH className="hidden sm:table-cell">{t('files.modified')}</TH>
                   <TH />
                 </TR>
@@ -261,7 +266,8 @@ export default function FilesPage() {
                       )}
                     </TD>
                     <TD className="hidden md:table-cell text-muted-foreground">{fileTypeLabel(file.mimeType)}</TD>
-                    <TD className="hidden md:table-cell text-muted-foreground">{file.owners?.[0]?.displayName ?? '—'}</TD>
+                    <TD className="hidden md:table-cell text-muted-foreground">{file.source ?? '—'}</TD>
+                    <TD className="hidden lg:table-cell text-muted-foreground">{file.uploadedBy ?? '—'}</TD>
                     <TD className="hidden sm:table-cell text-muted-foreground">{new Date(file.modifiedTime).toLocaleDateString()}</TD>
                     <TD className="text-right">
                       {file.webViewLink && (

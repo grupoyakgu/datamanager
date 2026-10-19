@@ -3,13 +3,10 @@ import { getSettings } from '@/lib/settings';
 import { getMessage, listMessageIds, trashMessage, type GmailMessage } from '@/lib/google/gmail';
 import { GoogleAuthError } from '@/lib/google/oauth';
 import { logAudit } from '@/lib/auth';
-import { getActiveTags, findOrCreateTagsByName } from '@/lib/summaries/repository';
+import { findOrCreateTagsByName } from '@/lib/summaries/repository';
 import { splitExtension } from '@/lib/summaries/drive-export';
-import { detectContentTags } from '@/lib/ai/tag-detection';
 import { parseAddress, parseForward, parseInlineTags } from './parse-forward';
 import { exportArchiveAttachments } from './drive-export';
-
-type TagRow = { id: string; name: string; aliases: string[] };
 
 /** Drop attachments whose extension is on the admin-configured exclude list (e.g. png). */
 function filterExcludedAttachments<T extends { filename: string }>(attachments: T[], excludedExtensions: string[]): T[] {
@@ -77,10 +74,10 @@ async function allAttachmentsSynced(archivedItemId: string): Promise<boolean> {
  * a one-way "save" action. If any attachment still failed to upload, the
  * email is left in place so a later sync can retry it.
  *
- * Tags it with whichever of the application's existing tags the content
- * matches (see detectContentTags — never invents new tags), merged with any
- * tags the sender declared themselves via a "tags:a, b" line in the body
- * (see parseInlineTags — those CAN create brand-new tags).
+ * Tags it ONLY with whatever the sender declared themselves via a
+ * "tags:a, b" line in the body (see parseInlineTags) — these can create
+ * brand-new tags (findOrCreateTagsByName). No content-based AI/keyword
+ * detection is applied; an email with no "tags:" line gets no tags.
  *
  * Attachments whose extension is on the admin-configured exclude list (e.g.
  * png, for inline signature images) are dropped entirely — never saved to
@@ -89,7 +86,6 @@ async function allAttachmentsSynced(archivedItemId: string): Promise<boolean> {
 export async function ingestArchiveMessage(
   mailboxUserId: string,
   message: GmailMessage,
-  tags: TagRow[],
   excludedExtensions: string[]
 ): Promise<string | null> {
   const supabaseAdmin = getSupabaseAdmin();
@@ -133,18 +129,15 @@ export async function ingestArchiveMessage(
   let readyToDelete = true;
 
   try {
-    const detectedTagNames = await detectContentTags(`${subject}\n${message.bodyText}`, tags);
-    const contentTagRows = detectedTagNames.map((name) => tags.find((t) => t.name === name)).filter((t): t is TagRow => !!t);
     const inlineTagNames = parseInlineTags(message.bodyText);
-    const inlineTagRows = inlineTagNames.length > 0 ? await findOrCreateTagsByName(inlineTagNames) : [];
-    const tagIds = Array.from(new Set([...contentTagRows.map((t) => t.id), ...inlineTagRows.map((t) => t.id)]));
+    const tagIds = inlineTagNames.length > 0 ? (await findOrCreateTagsByName(inlineTagNames)).map((t) => t.id) : [];
     if (tagIds.length > 0) {
       await supabaseAdmin
         .from('archive_item_tags')
         .insert(tagIds.map((tagId) => ({ archived_item_id: archivedItemId, tag_id: tagId })));
     }
   } catch (tagError) {
-    console.error('Tag detection failed for archived item', archivedItemId, tagError);
+    console.error('Tag parsing failed for archived item', archivedItemId, tagError);
   }
 
   const attachments = filterExcludedAttachments(message.attachments, excludedExtensions);
@@ -226,7 +219,6 @@ export async function syncArchiveMailbox(): Promise<ArchiveSyncResult> {
   try {
     await retryPendingDeletions(mailboxUser.id);
 
-    const tags = await getActiveTags();
     const ids = await listMessageIds(mailboxUser.id, query);
     const { data: known } = await supabaseAdmin
       .from('archived_items')
@@ -242,7 +234,7 @@ export async function syncArchiveMailbox(): Promise<ArchiveSyncResult> {
       }
       try {
         const message = await getMessage(mailboxUser.id, id);
-        const archivedItemId = await ingestArchiveMessage(mailboxUser.id, message, tags, settings.archive_excluded_extensions);
+        const archivedItemId = await ingestArchiveMessage(mailboxUser.id, message, settings.archive_excluded_extensions);
         if (!archivedItemId) {
           result.skipped += 1;
           continue;
