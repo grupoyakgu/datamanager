@@ -1,5 +1,5 @@
 import { getSupabaseAdmin } from '@/lib/supabase';
-import type { ArchiveItemView } from '@/types/database';
+import type { ArchiveItemView, ArchiveAttachmentSearchResult } from '@/types/database';
 
 export const ARCHIVE_SELECT = `
   id, title, subject, body_text, is_forward,
@@ -89,4 +89,50 @@ export async function getArchiveItemById(id: string): Promise<ArchiveItemView | 
   if (error) throw new Error(error.message);
   if (!data) return null;
   return toArchiveItemView(data);
+}
+
+interface RawArchiveAttachmentSearchRow {
+  id: string;
+  title: string;
+  archive_attachments: { id: string; filename: string; mime_type: string; drive_file_id: string | null }[] | null;
+  archive_item_tags: { tags: { id: string; name: string } | { id: string; name: string }[] | null }[] | null;
+}
+
+/** Every attachment belonging to an archived item tagged with at least one of the given tags. */
+export async function listArchiveAttachmentsByTags(tagIds: string[]): Promise<ArchiveAttachmentSearchResult[]> {
+  if (tagIds.length === 0) return [];
+  const supabaseAdmin = getSupabaseAdmin();
+
+  const { data: links } = await supabaseAdmin.from('archive_item_tags').select('archived_item_id').in('tag_id', tagIds);
+  const itemIds = Array.from(new Set((links ?? []).map((l) => l.archived_item_id as string)));
+  if (itemIds.length === 0) return [];
+
+  const { data, error } = await supabaseAdmin
+    .from('archived_items')
+    .select(
+      'id, title, archive_attachments ( id, filename, mime_type, drive_file_id ), archive_item_tags ( tags ( id, name ) )'
+    )
+    .in('id', itemIds)
+    .order('email_received_at', { ascending: false, nullsFirst: false });
+  if (error) throw new Error(error.message);
+
+  const results: ArchiveAttachmentSearchResult[] = [];
+  for (const row of (data ?? []) as unknown as RawArchiveAttachmentSearchRow[]) {
+    const itemTags = (row.archive_item_tags ?? [])
+      .map((t) => (Array.isArray(t.tags) ? t.tags[0] ?? null : t.tags))
+      .filter((t): t is { id: string; name: string } => !!t)
+      .sort((a, b) => a.name.localeCompare(b.name));
+    for (const attachment of row.archive_attachments ?? []) {
+      results.push({
+        id: attachment.id,
+        filename: attachment.filename,
+        mimeType: attachment.mime_type,
+        driveUrl: attachment.drive_file_id ? `https://drive.google.com/file/d/${attachment.drive_file_id}/view` : null,
+        itemId: row.id,
+        itemTitle: row.title,
+        tags: itemTags,
+      });
+    }
+  }
+  return results;
 }

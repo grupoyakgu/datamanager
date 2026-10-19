@@ -134,6 +134,42 @@ export async function getActiveTags() {
   return (data ?? []) as { id: string; name: string; aliases: string[] }[];
 }
 
+/**
+ * Look up each name against the shared `tags` table (case-insensitively) and
+ * create any that don't exist yet. Unlike detectContentTags (AI, never
+ * invents tags), this is for sender-declared tags that are meant to be
+ * free-form — e.g. the Archive module's "tags:a, b" email syntax.
+ */
+export async function findOrCreateTagsByName(names: string[]): Promise<{ id: string; name: string }[]> {
+  const requested = Array.from(new Set(names.map((n) => n.trim()).filter(Boolean)));
+  if (requested.length === 0) return [];
+
+  const supabaseAdmin = getSupabaseAdmin();
+  const { data: all } = await supabaseAdmin.from('tags').select('id, name');
+  const byLowerName = new Map((all ?? []).map((t) => [(t.name as string).toLowerCase(), t as { id: string; name: string }]));
+
+  const result: { id: string; name: string }[] = [];
+  const toCreate: string[] = [];
+  for (const name of requested) {
+    const existing = byLowerName.get(name.toLowerCase());
+    if (existing) result.push(existing);
+    else toCreate.push(name);
+  }
+
+  if (toCreate.length > 0) {
+    // ON CONFLICT DO NOTHING so a race with a concurrent sync never errors;
+    // re-select afterwards since skipped (conflicting) rows aren't returned.
+    await supabaseAdmin.from('tags').upsert(
+      toCreate.map((name) => ({ name, is_active: true })),
+      { onConflict: 'name', ignoreDuplicates: true }
+    );
+    const { data: createdOrExisting } = await supabaseAdmin.from('tags').select('id, name').in('name', toCreate);
+    result.push(...((createdOrExisting ?? []) as { id: string; name: string }[]));
+  }
+
+  return result;
+}
+
 export async function getDefaultFolderId(): Promise<string> {
   const supabaseAdmin = getSupabaseAdmin();
   const { data: def } = await supabaseAdmin.from('folders').select('id').eq('is_default', true).maybeSingle();

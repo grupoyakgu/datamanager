@@ -3,10 +3,10 @@ import { getSettings } from '@/lib/settings';
 import { getMessage, listMessageIds, trashMessage, type GmailMessage } from '@/lib/google/gmail';
 import { GoogleAuthError } from '@/lib/google/oauth';
 import { logAudit } from '@/lib/auth';
-import { getActiveTags } from '@/lib/summaries/repository';
+import { getActiveTags, findOrCreateTagsByName } from '@/lib/summaries/repository';
 import { splitExtension } from '@/lib/summaries/drive-export';
 import { detectContentTags } from '@/lib/ai/tag-detection';
-import { parseAddress, parseForward } from './parse-forward';
+import { parseAddress, parseForward, parseInlineTags } from './parse-forward';
 import { exportArchiveAttachments } from './drive-export';
 
 type TagRow = { id: string; name: string; aliases: string[] };
@@ -78,7 +78,9 @@ async function allAttachmentsSynced(archivedItemId: string): Promise<boolean> {
  * email is left in place so a later sync can retry it.
  *
  * Tags it with whichever of the application's existing tags the content
- * matches (see detectContentTags) — never invents new tags.
+ * matches (see detectContentTags — never invents new tags), merged with any
+ * tags the sender declared themselves via a "tags:a, b" line in the body
+ * (see parseInlineTags — those CAN create brand-new tags).
  *
  * Attachments whose extension is on the admin-configured exclude list (e.g.
  * png, for inline signature images) are dropped entirely — never saved to
@@ -132,11 +134,14 @@ export async function ingestArchiveMessage(
 
   try {
     const detectedTagNames = await detectContentTags(`${subject}\n${message.bodyText}`, tags);
-    const tagRows = detectedTagNames.map((name) => tags.find((t) => t.name === name)).filter((t): t is TagRow => !!t);
-    if (tagRows.length > 0) {
+    const contentTagRows = detectedTagNames.map((name) => tags.find((t) => t.name === name)).filter((t): t is TagRow => !!t);
+    const inlineTagNames = parseInlineTags(message.bodyText);
+    const inlineTagRows = inlineTagNames.length > 0 ? await findOrCreateTagsByName(inlineTagNames) : [];
+    const tagIds = Array.from(new Set([...contentTagRows.map((t) => t.id), ...inlineTagRows.map((t) => t.id)]));
+    if (tagIds.length > 0) {
       await supabaseAdmin
         .from('archive_item_tags')
-        .insert(tagRows.map((t) => ({ archived_item_id: archivedItemId, tag_id: t.id })));
+        .insert(tagIds.map((tagId) => ({ archived_item_id: archivedItemId, tag_id: tagId })));
     }
   } catch (tagError) {
     console.error('Tag detection failed for archived item', archivedItemId, tagError);

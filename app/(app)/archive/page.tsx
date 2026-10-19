@@ -7,7 +7,6 @@ import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import { ArchiveCard } from '@/components/archive/archive-card';
 import { useArchiveItems, useInvalidateArchive } from '@/hooks/use-archive';
-import { useUser } from '@/hooks/use-user';
 import { api } from '@/lib/api-client';
 import { useT } from '@/lib/i18n/context';
 import { cn } from '@/lib/utils';
@@ -15,7 +14,6 @@ import type { ArchiveSyncResult } from '@/lib/archive/sync';
 
 export default function ArchivePage() {
   const t = useT();
-  const { user } = useUser();
   const [inputValue, setInputValue] = useState('');
   const [query, setQuery] = useState('');
   const invalidate = useInvalidateArchive();
@@ -55,12 +53,10 @@ export default function ArchivePage() {
         title={t('archive.title')}
         subtitle={t('archive.subtitle')}
         actions={
-          user?.role === 'admin' ? (
-            <Button variant="outline" onClick={syncNow} disabled={syncing}>
-              <RefreshCw size={16} className={cn('mr-1', syncing && 'animate-spin')} />
-              {syncing ? t('dashboard.syncing') : t('archive.syncNow')}
-            </Button>
-          ) : undefined
+          <Button variant="outline" onClick={syncNow} disabled={syncing}>
+            <RefreshCw size={16} className={cn('mr-1', syncing && 'animate-spin')} />
+            {syncing ? t('dashboard.syncing') : t('archive.syncNow')}
+          </Button>
         }
       />
 

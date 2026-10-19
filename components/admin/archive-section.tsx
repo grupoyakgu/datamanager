@@ -1,15 +1,17 @@
 'use client';
 
 import { useState } from 'react';
-import { RefreshCw } from 'lucide-react';
+import { RefreshCw, Trash2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
+import { Select } from '@/components/ui/select';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { api } from '@/lib/api-client';
 import { useT } from '@/lib/i18n/context';
 import { useInvalidateArchive } from '@/hooks/use-archive';
-import { useAdminUsers, useSettings, useInvalidateAdmin, splitList } from './use-admin';
+import { useDriveRootFolders } from '@/hooks/use-api';
+import { useAdminUsers, useSettings, useArchiveFolderRules, useInvalidateAdmin, splitList } from './use-admin';
 import { GmailStatusBadge } from './users-section';
 import { cn } from '@/lib/utils';
 import type { ArchiveSyncResult } from '@/lib/archive/sync';
@@ -18,6 +20,8 @@ export function ArchiveSection() {
   const t = useT();
   const { data: users } = useAdminUsers();
   const { data: settings } = useSettings();
+  const { data: folderRules } = useArchiveFolderRules();
+  const { data: driveFolders } = useDriveRootFolders();
   const invalidateAdmin = useInvalidateAdmin();
   const invalidateArchive = useInvalidateArchive();
   const [mailbox, setMailbox] = useState<string | null>(null);
@@ -28,6 +32,10 @@ export function ArchiveSection() {
   const [syncing, setSyncing] = useState(false);
   const [syncResult, setSyncResult] = useState<ArchiveSyncResult | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [rulePattern, setRulePattern] = useState('');
+  const [ruleFolderId, setRuleFolderId] = useState('');
+  const [addingRule, setAddingRule] = useState(false);
+  const [ruleError, setRuleError] = useState<string | null>(null);
 
   const mailboxUser = users?.find((u) => u.email.toLowerCase() === (settings?.archive_mailbox ?? '').toLowerCase());
 
@@ -62,6 +70,37 @@ export function ArchiveSection() {
       setError(err instanceof Error ? err.message : t('common.error'));
     } finally {
       setSyncing(false);
+    }
+  };
+
+  const addRule = async () => {
+    setRuleError(null);
+    const targetFolder = driveFolders?.find((f) => f.id === ruleFolderId);
+    if (!rulePattern.trim() || !targetFolder) return;
+    setAddingRule(true);
+    try {
+      await api.post('/api/admin/archive-folder-rules', {
+        pattern: rulePattern.trim(),
+        driveFolderId: targetFolder.id,
+        driveFolderName: targetFolder.name,
+      });
+      invalidateAdmin('archive-folder-rules');
+      setRulePattern('');
+      setRuleFolderId('');
+    } catch (err) {
+      setRuleError(err instanceof Error ? err.message : t('common.error'));
+    } finally {
+      setAddingRule(false);
+    }
+  };
+
+  const deleteRule = async (id: string) => {
+    setRuleError(null);
+    try {
+      await api.delete(`/api/admin/archive-folder-rules/${id}`);
+      invalidateAdmin('archive-folder-rules');
+    } catch (err) {
+      setRuleError(err instanceof Error ? err.message : t('common.error'));
     }
   };
 
@@ -113,6 +152,49 @@ export function ArchiveSection() {
           <div className="flex items-center gap-3">
             <Button onClick={save}>{t('common.save')}</Button>
             {status && <span className="text-sm text-muted-foreground">{status}</span>}
+          </div>
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader>
+          <CardTitle>{t('admin.archiveFolderRules')}</CardTitle>
+          <p className="text-sm text-muted-foreground">{t('admin.archiveFolderRulesHint')}</p>
+        </CardHeader>
+        <CardContent className="space-y-4 max-w-2xl">
+          {ruleError && <p className="text-sm text-destructive">{ruleError}</p>}
+          <div className="space-y-2">
+            {(folderRules ?? []).length === 0 && (
+              <p className="text-sm text-muted-foreground">{t('admin.archiveFolderRulesEmpty')}</p>
+            )}
+            {folderRules?.map((rule) => (
+              <div key={rule.id} className="flex items-center gap-2 rounded-md border bg-card px-3 py-2 text-sm">
+                <span className="font-medium truncate">{rule.pattern}</span>
+                <span className="text-muted-foreground">→</span>
+                <span className="truncate">{rule.drive_folder_name}</span>
+                <Button size="sm" variant="ghost" className="ml-auto text-destructive" onClick={() => deleteRule(rule.id)}>
+                  <Trash2 size={16} />
+                </Button>
+              </div>
+            ))}
+          </div>
+          <div className="grid grid-cols-1 sm:grid-cols-[1fr_1fr_auto] gap-2">
+            <Input
+              value={rulePattern}
+              onChange={(e) => setRulePattern(e.target.value)}
+              placeholder={t('admin.archiveRulePatternPlaceholder')}
+            />
+            <Select value={ruleFolderId} onChange={(e) => setRuleFolderId(e.target.value)}>
+              <option value="">{t('admin.archiveRuleFolderPlaceholder')}</option>
+              {driveFolders?.map((f) => (
+                <option key={f.id} value={f.id}>
+                  {f.name}
+                </option>
+              ))}
+            </Select>
+            <Button onClick={addRule} disabled={addingRule || !rulePattern.trim() || !ruleFolderId}>
+              {addingRule ? t('common.loading') : t('admin.addRule')}
+            </Button>
           </div>
         </CardContent>
       </Card>

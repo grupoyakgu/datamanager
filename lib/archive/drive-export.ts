@@ -1,8 +1,8 @@
 import { getSupabaseAdmin } from '@/lib/supabase';
-import { getSettings } from '@/lib/settings';
 import { deleteFile, renameFile, uploadFile } from '@/lib/google/drive';
 import { getAttachmentData } from '@/lib/google/gmail';
 import { getDriveWriter, splitExtension } from '@/lib/summaries/drive-export';
+import { resolveArchiveFolderId } from './folder-rules';
 
 function attachmentDriveName(title: string, filename: string, suffix: string | null): string {
   const { base, ext } = splitExtension(filename);
@@ -10,8 +10,10 @@ function attachmentDriveName(title: string, filename: string, suffix: string | n
 }
 
 /**
- * Upload every not-yet-synced attachment of an archived item into the fixed
- * Archive Drive folder, using the same pinned Drive-writer account
+ * Upload every not-yet-synced attachment of an archived item into whichever
+ * Drive folder the admin-managed sender/domain rules pick for the original
+ * sender (see folder-rules.ts), falling back to the single fixed Archive
+ * folder. Uses the same pinned Drive-writer account
  * (`getSettings().drive_writer_email`) that owns every other Drive write in
  * the app. The bytes themselves are fetched from Gmail using the Archive
  * mailbox's own connection (`ingestedBy`). Best-effort per attachment: one
@@ -23,7 +25,11 @@ export async function exportArchiveAttachments(archivedItemId: string, ingestedB
   if (!writer) return;
 
   const [{ data: item }, { data: attachmentRows }] = await Promise.all([
-    supabaseAdmin.from('archived_items').select('title, drive_file_suffix').eq('id', archivedItemId).maybeSingle(),
+    supabaseAdmin
+      .from('archived_items')
+      .select('title, drive_file_suffix, original_sender_email')
+      .eq('id', archivedItemId)
+      .maybeSingle(),
     supabaseAdmin
       .from('archive_attachments')
       .select('id, gmail_message_id, gmail_attachment_id, filename, mime_type, drive_file_id')
@@ -33,7 +39,7 @@ export async function exportArchiveAttachments(archivedItemId: string, ingestedB
   const attachments = attachmentRows ?? [];
   if (attachments.length === 0 || !item) return;
 
-  const settings = await getSettings();
+  const folderId = await resolveArchiveFolderId(item.original_sender_email);
   let suffix = item.drive_file_suffix ?? null;
   if (!suffix) {
     suffix = String(Math.floor(1000 + Math.random() * 9000));
@@ -47,7 +53,7 @@ export async function exportArchiveAttachments(archivedItemId: string, ingestedB
       const uploaded = await uploadFile(writer.id, {
         name,
         mimeType: attachment.mime_type,
-        parents: [settings.archive_drive_folder_id],
+        parents: [folderId],
         data,
       });
       await supabaseAdmin

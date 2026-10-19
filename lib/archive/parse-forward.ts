@@ -96,3 +96,17 @@ If is_forward is false, return null for the other four fields.`;
     return heuristic;
   }
 }
+
+const INLINE_TAGS_PATTERN = /\btags\s*:\s*(.+)$/im;
+
+/**
+ * Parse a sender-declared "tags:tag_name1, tag_name2" line anywhere in an
+ * email body into a list of tag names. Unlike the AI content-tag detector,
+ * these are taken as-is and may create brand-new tags (see
+ * findOrCreateTagsByName in lib/summaries/repository.ts).
+ */
+export function parseInlineTags(bodyText: string): string[] {
+  const match = bodyText.match(INLINE_TAGS_PATTERN);
+  if (!match) return [];
+  return Array.from(new Set(match[1].split(',').map((t) => t.trim()).filter(Boolean)));
+}

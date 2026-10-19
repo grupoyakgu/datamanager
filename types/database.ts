@@ -161,3 +161,26 @@ export interface ArchiveItemView {
   comments: ArchiveCommentView[];
   created_at: string;
 }
+
+/** Admin-managed rule routing an archived item's attachments to a Drive
+ * folder based on the original sender's email or domain. */
+export interface ArchiveFolderRule {
+  id: string;
+  pattern: string;
+  pattern_type: 'email' | 'domain';
+  drive_folder_id: string;
+  drive_folder_name: string;
+  created_at: string;
+}
+
+/** One attachment matched by a tag search, with enough context to open it and
+ * see which archived item (and other tags) it came from. */
+export interface ArchiveAttachmentSearchResult {
+  id: string;
+  filename: string;
+  mimeType: string;
+  driveUrl: string | null;
+  itemId: string;
+  itemTitle: string;
+  tags: { id: string; name: string }[];
+}
