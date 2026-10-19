@@ -3,7 +3,7 @@ import { handleRoute, HttpError, readJson } from '@/lib/http';
 import { requireUser, logAudit } from '@/lib/auth';
 import { getSupabaseAdmin } from '@/lib/supabase';
 import { getArchiveItemById } from '@/lib/archive/repository';
-import { deleteArchiveItemFromDrive, renameArchiveDriveFiles } from '@/lib/archive/drive-export';
+import { deleteArchiveItemFromDrive } from '@/lib/archive/drive-export';
 
 export const dynamic = 'force-dynamic';
 
@@ -33,13 +33,10 @@ export const PATCH = handleRoute(async (request: Request, { params }: Params) =>
 
   const newTitle = body.title?.trim();
   if (newTitle && newTitle !== existing.title) {
+    // Drive files are saved under their own original filename, independent
+    // of the item's title, so renaming the item never touches Drive.
     const { error } = await supabaseAdmin.from('archived_items').update({ title: newTitle }).eq('id', id);
     if (error) throw new Error(error.message);
-    try {
-      await renameArchiveDriveFiles(id, newTitle);
-    } catch (driveError) {
-      console.error('Failed to rename Drive files for archived item', id, driveError);
-    }
   }
 
   if (Array.isArray(body.tagIds)) {
