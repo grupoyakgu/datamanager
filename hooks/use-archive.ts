@@ -3,7 +3,7 @@
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { api } from '@/lib/api-client';
 import { useUser } from './use-user';
-import type { ArchiveItemView, ArchiveAttachmentSearchResult } from '@/types/database';
+import type { ArchiveItemView, ArchiveAttachmentSearchResult, ArchiveTagOption } from '@/types/database';
 
 export function useArchiveItems(q?: string) {
   const { user } = useUser();
@@ -37,11 +37,22 @@ export function useArchiveAttachmentsByTags(tagIds: string[]) {
   });
 }
 
+/** Tags actually used by at least one archived item, most-recently-used first. */
+export function useArchiveTags() {
+  const { user } = useUser();
+  return useQuery({
+    queryKey: ['archive-tags'],
+    queryFn: () => api.get<ArchiveTagOption[]>('/api/archive/tags'),
+    enabled: !!user,
+  });
+}
+
 export function useInvalidateArchive() {
   const queryClient = useQueryClient();
   return () => {
     queryClient.invalidateQueries({ queryKey: ['archive'] });
     queryClient.invalidateQueries({ queryKey: ['archive-item'] });
     queryClient.invalidateQueries({ queryKey: ['archive-attachments'] });
+    queryClient.invalidateQueries({ queryKey: ['archive-tags'] });
   };
 }

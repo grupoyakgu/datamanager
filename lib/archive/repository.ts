@@ -1,5 +1,5 @@
 import { getSupabaseAdmin } from '@/lib/supabase';
-import type { ArchiveItemView, ArchiveAttachmentSearchResult } from '@/types/database';
+import type { ArchiveItemView, ArchiveAttachmentSearchResult, ArchiveTagOption } from '@/types/database';
 
 export const ARCHIVE_SELECT = `
   id, title, subject, body_text, is_forward,
@@ -135,4 +135,32 @@ export async function listArchiveAttachmentsByTags(tagIds: string[]): Promise<Ar
     }
   }
   return results;
+}
+
+/** Every tag actually used by at least one archived item, most-recently-used first. */
+export async function listArchiveTags(): Promise<ArchiveTagOption[]> {
+  const supabaseAdmin = getSupabaseAdmin();
+  const { data: links } = await supabaseAdmin.from('archive_item_tags').select('tag_id, archived_item_id');
+  if (!links || links.length === 0) return [];
+
+  const itemIds = Array.from(new Set(links.map((l) => l.archived_item_id as string)));
+  const { data: items } = await supabaseAdmin.from('archived_items').select('id, email_received_at, created_at').in('id', itemIds);
+  const dateByItemId = new Map(
+    (items ?? []).map((i) => [i.id as string, (i.email_received_at as string | null) ?? (i.created_at as string)])
+  );
+
+  const lastUsedByTagId = new Map<string, string>();
+  for (const link of links) {
+    const date = dateByItemId.get(link.archived_item_id as string);
+    if (!date) continue;
+    const existing = lastUsedByTagId.get(link.tag_id as string);
+    if (!existing || date > existing) lastUsedByTagId.set(link.tag_id as string, date);
+  }
+
+  const tagIds = Array.from(lastUsedByTagId.keys());
+  const { data: tags } = await supabaseAdmin.from('tags').select('id, name').in('id', tagIds);
+
+  return (tags ?? [])
+    .map((t) => ({ id: t.id as string, name: t.name as string, lastUsedAt: lastUsedByTagId.get(t.id as string) ?? null }))
+    .sort((a, b) => (b.lastUsedAt ?? '').localeCompare(a.lastUsedAt ?? ''));
 }

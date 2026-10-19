@@ -184,3 +184,10 @@ export interface ArchiveAttachmentSearchResult {
   itemTitle: string;
   tags: { id: string; name: string }[];
 }
+
+/** A tag actually used by at least one archived item, with when it was last applied. */
+export interface ArchiveTagOption {
+  id: string;
+  name: string;
+  lastUsedAt: string | null;
+}

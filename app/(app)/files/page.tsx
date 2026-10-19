@@ -1,8 +1,8 @@
 'use client';
 
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { Folder, FileText, ExternalLink, ChevronRight, Search, RefreshCw } from 'lucide-react';
+import { Folder, FileText, ExternalLink, ChevronRight, Search, RefreshCw, X } from 'lucide-react';
 import { PageHeader, EmptyState } from '@/components/layout/page-header';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
@@ -10,8 +10,7 @@ import { Label } from '@/components/ui/label';
 import { Table, THead, TBody, TR, TH, TD } from '@/components/ui/table';
 import { api, ApiError } from '@/lib/api-client';
 import { useUser } from '@/hooks/use-user';
-import { useTags } from '@/hooks/use-api';
-import { useArchiveAttachmentsByTags, useInvalidateArchive } from '@/hooks/use-archive';
+import { useArchiveAttachmentsByTags, useArchiveTags, useInvalidateArchive } from '@/hooks/use-archive';
 import { useT } from '@/lib/i18n/context';
 import { cn } from '@/lib/utils';
 import type { DriveFileWithSource } from '@/app/api/drive/files/route';
@@ -67,11 +66,20 @@ export default function FilesPage() {
   const [search, setSearch] = useState('');
   const [activeSearch, setActiveSearch] = useState('');
   const [selectedTagIds, setSelectedTagIds] = useState<string[]>([]);
+  const [tagQuery, setTagQuery] = useState('');
   const [syncing, setSyncing] = useState(false);
   const [syncMessage, setSyncMessage] = useState<string | null>(null);
 
-  const { data: tags } = useTags();
+  const { data: archiveTags } = useArchiveTags();
   const { data: tagResults, isLoading: tagResultsLoading } = useArchiveAttachmentsByTags(selectedTagIds);
+
+  const selectedTags = useMemo(() => (archiveTags ?? []).filter((t) => selectedTagIds.includes(t.id)), [archiveTags, selectedTagIds]);
+  const mostRecentUnselected = (archiveTags ?? []).find((t) => !selectedTagIds.includes(t.id));
+  const tagSearchResults = useMemo(() => {
+    const q = tagQuery.trim().toLowerCase();
+    if (!q) return [];
+    return (archiveTags ?? []).filter((t) => !selectedTagIds.includes(t.id) && t.name.toLowerCase().includes(q)).slice(0, 8);
+  }, [archiveTags, selectedTagIds, tagQuery]);
 
   const { data, isLoading, error } = useQuery({
     queryKey: ['drive', folderId ?? 'root', activeSearch],
@@ -89,8 +97,11 @@ export default function FilesPage() {
 
   const crumbs = [{ id: null as string | null, name: data?.rootName ?? t('files.root') }, ...(data?.ancestors ?? [])];
 
-  const toggleTag = (tagId: string) =>
-    setSelectedTagIds((prev) => (prev.includes(tagId) ? prev.filter((id) => id !== tagId) : [...prev, tagId]));
+  const addTag = (tagId: string) => {
+    setSelectedTagIds((prev) => (prev.includes(tagId) ? prev : [...prev, tagId]));
+    setTagQuery('');
+  };
+  const removeTag = (tagId: string) => setSelectedTagIds((prev) => prev.filter((id) => id !== tagId));
 
   const syncNow = async () => {
     setSyncing(true);
@@ -127,30 +138,56 @@ export default function FilesPage() {
       />
       {syncMessage && <p className="text-sm text-muted-foreground mb-3">{syncMessage}</p>}
 
-      {tags && tags.length > 0 && (
+      {archiveTags && archiveTags.length > 0 && (
         <div className="mb-4 space-y-1.5">
           <Label>{t('files.filterByTag')}</Label>
           <div className="flex flex-wrap items-center gap-1.5">
-            {tags.map((tag) => {
-              const selected = selectedTagIds.includes(tag.id);
-              return (
-                <button
-                  key={tag.id}
-                  type="button"
-                  onClick={() => toggleTag(tag.id)}
-                  className={cn(
-                    'rounded-full border px-2.5 py-1 text-xs transition-colors',
-                    selected ? 'bg-primary text-primary-foreground border-transparent' : 'hover:bg-accent'
-                  )}
-                >
-                  {tag.name}
-                </button>
-              );
-            })}
+            {selectedTags.map((tag) => (
+              <button
+                key={tag.id}
+                type="button"
+                onClick={() => removeTag(tag.id)}
+                className="rounded-full border px-2.5 py-1 text-xs bg-primary text-primary-foreground border-transparent inline-flex items-center gap-1"
+              >
+                {tag.name} <X size={12} />
+              </button>
+            ))}
+            {mostRecentUnselected && (
+              <button
+                type="button"
+                onClick={() => addTag(mostRecentUnselected.id)}
+                className="rounded-full border px-2.5 py-1 text-xs hover:bg-accent"
+                title={t('files.mostRecentTag')}
+              >
+                + {mostRecentUnselected.name}
+              </button>
+            )}
             {selectedTagIds.length > 0 && (
               <Button type="button" variant="ghost" size="sm" onClick={() => setSelectedTagIds([])}>
                 {t('common.clearFilters')}
               </Button>
+            )}
+          </div>
+          <div className="relative max-w-xs">
+            <Input
+              value={tagQuery}
+              onChange={(e) => setTagQuery(e.target.value)}
+              placeholder={t('files.searchTagsPlaceholder')}
+              className="h-8 text-xs"
+            />
+            {tagSearchResults.length > 0 && (
+              <div className="absolute z-10 mt-1 w-full rounded-md border bg-card shadow-md max-h-48 overflow-auto">
+                {tagSearchResults.map((tag) => (
+                  <button
+                    key={tag.id}
+                    type="button"
+                    onClick={() => addTag(tag.id)}
+                    className="block w-full text-left px-3 py-1.5 text-xs hover:bg-accent"
+                  >
+                    {tag.name}
+                  </button>
+                ))}
+              </div>
             )}
           </div>
         </div>
