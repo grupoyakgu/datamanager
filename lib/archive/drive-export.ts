@@ -36,7 +36,8 @@ export async function exportArchiveAttachments(archivedItemId: string, ingestedB
   const attachments = attachmentRows ?? [];
   if (attachments.length === 0 || !item) return;
 
-  const folderId = await resolveArchiveFolderId(ingestedBy, item.original_sender_email);
+  const folder = await resolveArchiveFolderId(ingestedBy, item.original_sender_email);
+  await supabaseAdmin.from('archived_items').update({ drive_folder_name: folder.name }).eq('id', archivedItemId);
   let suffix = item.drive_file_suffix ?? null;
   if (!suffix) {
     suffix = String(Math.floor(1000 + Math.random() * 9000));
@@ -50,7 +51,7 @@ export async function exportArchiveAttachments(archivedItemId: string, ingestedB
       const uploaded = await uploadFile(ingestedBy, {
         name,
         mimeType: attachment.mime_type,
-        parents: [folderId],
+        parents: [folder.id],
         data,
       });
       await supabaseAdmin

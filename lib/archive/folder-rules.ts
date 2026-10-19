@@ -47,7 +47,10 @@ export async function getArchiveDriveRootId(mailboxUserId: string): Promise<stri
  * signed-in user can open the file from their own Google account,
  * regardless of who is logged into the app.
  */
-export async function resolveArchiveFolderId(mailboxUserId: string, originalSenderEmail: string | null): Promise<string> {
+export async function resolveArchiveFolderId(
+  mailboxUserId: string,
+  originalSenderEmail: string | null
+): Promise<{ id: string; name: string }> {
   const archiveRoot = await getArchiveDriveRootId(mailboxUserId);
   const supabaseAdmin = getSupabaseAdmin();
 
@@ -55,6 +58,7 @@ export async function resolveArchiveFolderId(mailboxUserId: string, originalSend
   const senderDomain = email?.split('@')[1] || null;
 
   let folderId = archiveRoot;
+  let folderName = 'archive';
 
   if (email) {
     const rules = await listArchiveFolderRules();
@@ -64,10 +68,12 @@ export async function resolveArchiveFolderId(mailboxUserId: string, originalSend
 
     if (matched) {
       folderId = matched.drive_folder_id;
+      folderName = matched.drive_folder_name;
     } else {
       const pattern = senderDomain ?? email;
       const patternType: 'email' | 'domain' = senderDomain ? 'domain' : 'email';
       folderId = await ensureFolder(mailboxUserId, archiveRoot, pattern);
+      folderName = pattern;
       const { error } = await supabaseAdmin
         .from('archive_folder_rules')
         .insert({ pattern, pattern_type: patternType, drive_folder_id: folderId, drive_folder_name: pattern });
@@ -85,5 +91,5 @@ export async function resolveArchiveFolderId(mailboxUserId: string, originalSend
     console.error('Failed to grant domain access on archive folder', folderId, shareError);
   }
 
-  return folderId;
+  return { id: folderId, name: folderName };
 }

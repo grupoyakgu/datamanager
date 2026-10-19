@@ -5,6 +5,7 @@ import { getAncestors, getFile, listFolder, searchFiles, type DriveFile } from '
 import { GoogleAuthError } from '@/lib/google/oauth';
 import { getArchiveMailboxUser } from '@/lib/archive/sync';
 import { getArchiveDriveRootId } from '@/lib/archive/folder-rules';
+import { prettySenderName } from '@/lib/archive/display-name';
 import { getSupabaseAdmin } from '@/lib/supabase';
 
 export const dynamic = 'force-dynamic';
@@ -13,9 +14,11 @@ export type DriveFileWithSource = DriveFile & { source: string | null; uploadedB
 
 /**
  * For each (non-folder) file, look up which archived item it came from —
- * "source" is who the email was originally sent from, "uploadedBy" is the
- * account that actually wrote the file to Drive (the Archive mailbox).
- * Folders aren't tied to a single sender, so they're left blank.
+ * "source" is who the email was originally sent from; "uploadedBy" is the
+ * team member who sent (or forwarded) it to the Archive mailbox, not the
+ * mailbox account itself (every file is technically written by that one
+ * shared account, which isn't useful to show). Folders aren't tied to a
+ * single sender, so they're left blank.
  *
  * Also overrides the displayed name with the attachment's own original
  * filename (archive_attachments.filename) in place of the actual Drive
@@ -39,22 +42,27 @@ async function withSourceInfo(files: DriveFile[]): Promise<DriveFileWithSource[]
   const itemIds = Array.from(new Set((attachmentRows ?? []).map((r) => r.archived_item_id as string)));
   const { data: itemRows } =
     itemIds.length > 0
-      ? await supabaseAdmin.from('archived_items').select('id, original_sender_name, original_sender_email, ingested_by').in('id', itemIds)
+      ? await supabaseAdmin
+          .from('archived_items')
+          .select('id, original_sender_name, original_sender_email, forwarded_by_name, forwarded_by_email, is_forward')
+          .in('id', itemIds)
       : { data: [] };
   const itemById = new Map((itemRows ?? []).map((i) => [i.id as string, i]));
-
-  const userIds = Array.from(new Set((itemRows ?? []).map((i) => i.ingested_by).filter((id): id is string => !!id)));
-  const { data: userRows } = userIds.length > 0 ? await supabaseAdmin.from('users').select('id, email').in('id', userIds) : { data: [] };
-  const emailByUserId = new Map((userRows ?? []).map((u) => [u.id as string, u.email as string]));
 
   const metaByFileId = new Map<string, { name: string | null; source: string | null; uploadedBy: string | null }>();
   for (const row of attachmentRows ?? []) {
     const item = itemById.get(row.archived_item_id as string);
     if (!item) continue;
+    // "Uploaded by" = whoever sent it TO the archive mailbox: the forwarder
+    // on a forward, or the direct sender otherwise (original_sender_* holds
+    // the direct sender's info in that case — see ingestArchiveMessage).
+    const uploadedBy = item.is_forward
+      ? prettySenderName(item.forwarded_by_name as string | null, item.forwarded_by_email as string | null)
+      : prettySenderName(item.original_sender_name as string | null, item.original_sender_email as string | null);
     metaByFileId.set(row.drive_file_id as string, {
       name: (row.filename as string | null) || null,
-      source: (item.original_sender_name as string | null) || (item.original_sender_email as string | null) || null,
-      uploadedBy: item.ingested_by ? (emailByUserId.get(item.ingested_by as string) ?? null) : null,
+      source: prettySenderName(item.original_sender_name as string | null, item.original_sender_email as string | null),
+      uploadedBy,
     });
   }
 

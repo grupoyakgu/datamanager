@@ -1,4 +1,5 @@
 import { getSupabaseAdmin } from '@/lib/supabase';
+import { prettySenderName } from './display-name';
 import type { ArchiveItemView, ArchiveAttachmentSearchResult, ArchiveTagOption } from '@/types/database';
 
 export const ARCHIVE_SELECT = `
@@ -93,7 +94,9 @@ export async function getArchiveItemById(id: string): Promise<ArchiveItemView | 
 
 interface RawArchiveAttachmentSearchRow {
   id: string;
-  title: string;
+  original_sender_name: string | null;
+  original_sender_email: string | null;
+  drive_folder_name: string | null;
   archive_attachments: { id: string; filename: string; mime_type: string; drive_file_id: string | null }[] | null;
   archive_item_tags: { tags: { id: string; name: string } | { id: string; name: string }[] | null }[] | null;
 }
@@ -110,7 +113,7 @@ export async function listArchiveAttachmentsByTags(tagIds: string[]): Promise<Ar
   const { data, error } = await supabaseAdmin
     .from('archived_items')
     .select(
-      'id, title, archive_attachments ( id, filename, mime_type, drive_file_id ), archive_item_tags ( tags ( id, name ) )'
+      'id, original_sender_name, original_sender_email, drive_folder_name, archive_attachments ( id, filename, mime_type, drive_file_id ), archive_item_tags ( tags ( id, name ) )'
     )
     .in('id', itemIds)
     .order('email_received_at', { ascending: false, nullsFirst: false });
@@ -122,6 +125,7 @@ export async function listArchiveAttachmentsByTags(tagIds: string[]): Promise<Ar
       .map((t) => (Array.isArray(t.tags) ? t.tags[0] ?? null : t.tags))
       .filter((t): t is { id: string; name: string } => !!t)
       .sort((a, b) => a.name.localeCompare(b.name));
+    const source = prettySenderName(row.original_sender_name, row.original_sender_email);
     for (const attachment of row.archive_attachments ?? []) {
       results.push({
         id: attachment.id,
@@ -129,7 +133,8 @@ export async function listArchiveAttachmentsByTags(tagIds: string[]): Promise<Ar
         mimeType: attachment.mime_type,
         driveUrl: attachment.drive_file_id ? `https://drive.google.com/file/d/${attachment.drive_file_id}/view` : null,
         itemId: row.id,
-        itemTitle: row.title,
+        source,
+        folderName: row.drive_folder_name,
         tags: itemTags,
       });
     }

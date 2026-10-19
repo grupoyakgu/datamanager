@@ -167,7 +167,7 @@ export const en = {
     hint: 'Separate multiple addresses with commas. The summary is appended to the message body.',
   },
   files: {
-    title: 'Google Drive Files',
+    title: 'Grupo Yakgu Drive',
     subtitle: 'Browse files stored in the company Google Drive',
     searchPlaceholder: 'Search files by name...',
     root: 'My Drive',
@@ -182,6 +182,7 @@ export const en = {
     mostRecentTag: 'Most recently used tag',
     searchTagsPlaceholder: 'Search for an older tag...',
     fromItem: 'From',
+    folder: 'Folder',
     source: 'Source',
     uploadedBy: 'Uploaded by',
     noTaggedFiles: 'No files with the selected tags.',
@@ -502,7 +503,7 @@ export const es: DeepStringRecord = {
     hint: 'Separa varias direcciones con comas. El resumen se añade al cuerpo del mensaje.',
   },
   files: {
-    title: 'Archivos de Google Drive',
+    title: 'Drive de Grupo Yakgu',
     subtitle: 'Explora los archivos del Google Drive de la empresa',
     searchPlaceholder: 'Buscar archivos por nombre...',
     root: 'Mi unidad',
@@ -517,6 +518,7 @@ export const es: DeepStringRecord = {
     mostRecentTag: 'Etiqueta usada más recientemente',
     searchTagsPlaceholder: 'Buscar una etiqueta anterior...',
     fromItem: 'De',
+    folder: 'Carpeta',
     source: 'Origen',
     uploadedBy: 'Subido por',
     noTaggedFiles: 'No hay archivos con las etiquetas seleccionadas.',

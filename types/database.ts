@@ -174,14 +174,17 @@ export interface ArchiveFolderRule {
 }
 
 /** One attachment matched by a tag search, with enough context to open it and
- * see which archived item (and other tags) it came from. */
+ * see where it came from. */
 export interface ArchiveAttachmentSearchResult {
   id: string;
   filename: string;
   mimeType: string;
   driveUrl: string | null;
   itemId: string;
-  itemTitle: string;
+  /** Who the email was originally sent from (not the item's title/subject). */
+  source: string | null;
+  /** The Drive folder its attachments were organized into. */
+  folderName: string | null;
   tags: { id: string; name: string }[];
 }
 

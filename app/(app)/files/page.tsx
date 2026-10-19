@@ -204,6 +204,7 @@ export default function FilesPage() {
               <TR>
                 <TH>{t('common.name')}</TH>
                 <TH className="hidden md:table-cell">{t('files.fromItem')}</TH>
+                <TH className="hidden lg:table-cell">{t('files.folder')}</TH>
                 <TH className="hidden sm:table-cell">{t('summaries.tags')}</TH>
                 <TH />
               </TR>
@@ -216,7 +217,8 @@ export default function FilesPage() {
                       <FileText size={16} className="text-muted-foreground" /> {attachment.filename}
                     </span>
                   </TD>
-                  <TD className="hidden md:table-cell text-muted-foreground truncate max-w-[16rem]">{attachment.itemTitle}</TD>
+                  <TD className="hidden md:table-cell text-muted-foreground truncate max-w-[16rem]">{attachment.source ?? '—'}</TD>
+                  <TD className="hidden lg:table-cell text-muted-foreground">{attachment.folderName ?? '—'}</TD>
                   <TD className="hidden sm:table-cell text-muted-foreground">{attachment.tags.map((tag) => tag.name).join(', ')}</TD>
                   <TD className="text-right">
                     {attachment.driveUrl ? (
