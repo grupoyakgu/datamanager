@@ -10,18 +10,19 @@ export const dynamic = 'force-dynamic';
 export const maxDuration = 300;
 
 /**
- * TESTING ONLY: wipes every archived item (its tag links and comments
- * cascade with it — both have ON DELETE CASCADE on archived_item_id), every
- * file under the Archive Drive root, and any tag that was only ever used by
- * those archive items — e.g. ones auto-created from a sender's inline
- * "tags:a, b" line. A tag still used by a meeting summary is never deleted,
- * since the `tags` table is shared with that module.
+ * TESTING ONLY, full reset: wipes every archived item (its tag links and
+ * comments cascade with it), every file AND subfolder under the Archive
+ * Drive root (the root itself is kept, now empty), every archive_folder_rule
+ * (their target folders no longer exist), and every tag not used by a
+ * meeting summary — a blanket sweep rather than just the tags currently
+ * linked to archive items, since a tag can already be orphaned (e.g. from
+ * an earlier manual DB cleanup) with no archive_item_tags row left to
+ * catch it.
  *
  * The Drive side is cleared by walking the actual folder tree
  * (clearFolderContents), not by following DB records — so it also catches
  * files orphaned by e.g. a manual SQL delete of archived_items, which only
- * touches the database. Admin-only, irreversible. Leaves the organizational
- * Drive folders and archive_folder_rules in place.
+ * touches the database. Admin-only, irreversible.
  */
 export const POST = handleRoute(async (request: Request) => {
   const { user } = await requireAdmin(request);
@@ -29,23 +30,23 @@ export const POST = handleRoute(async (request: Request) => {
 
   const { count: itemCount } = await supabaseAdmin.from('archived_items').select('id', { count: 'exact', head: true });
 
-  // Capture which tags archived items use before the cascade removes those links.
-  const { data: tagLinkRows } = await supabaseAdmin.from('archive_item_tags').select('tag_id');
-  const archiveTagIds = Array.from(new Set((tagLinkRows ?? []).map((r) => r.tag_id as string)));
-
   const { error } = await supabaseAdmin.from('archived_items').delete().not('id', 'is', null);
   if (error) throw new Error(error.message);
 
+  const { count: rulesCount } = await supabaseAdmin.from('archive_folder_rules').select('id', { count: 'exact', head: true });
+  await supabaseAdmin.from('archive_folder_rules').delete().not('id', 'is', null);
+
   let tagsDeleted = 0;
-  if (archiveTagIds.length > 0) {
-    const { data: stillUsedRows } = await supabaseAdmin.from('meeting_summary_tags').select('tag_id').in('tag_id', archiveTagIds);
-    const stillUsed = new Set((stillUsedRows ?? []).map((r) => r.tag_id as string));
-    const toDelete = archiveTagIds.filter((id) => !stillUsed.has(id));
-    if (toDelete.length > 0) {
-      const { error: tagError } = await supabaseAdmin.from('tags').delete().in('id', toDelete);
-      if (tagError) console.error('Failed to delete archive-only tags', tagError);
-      else tagsDeleted = toDelete.length;
-    }
+  const [{ data: usedBySummaries }, { data: allTags }] = await Promise.all([
+    supabaseAdmin.from('meeting_summary_tags').select('tag_id'),
+    supabaseAdmin.from('tags').select('id'),
+  ]);
+  const usedIds = new Set((usedBySummaries ?? []).map((r) => r.tag_id as string));
+  const toDelete = (allTags ?? []).map((t) => t.id as string).filter((id) => !usedIds.has(id));
+  if (toDelete.length > 0) {
+    const { error: tagError } = await supabaseAdmin.from('tags').delete().in('id', toDelete);
+    if (tagError) console.error('Failed to delete unused tags', tagError);
+    else tagsDeleted = toDelete.length;
   }
 
   let filesDeleted = 0;
@@ -59,6 +60,11 @@ export const POST = handleRoute(async (request: Request) => {
     }
   }
 
-  await logAudit(user.id, 'archive.cleared', 'archived_item', 'all', { items: itemCount ?? 0, filesDeleted, tagsDeleted });
-  return NextResponse.json({ ok: true, deleted: itemCount ?? 0, filesDeleted, tagsDeleted });
+  await logAudit(user.id, 'archive.cleared', 'archived_item', 'all', {
+    items: itemCount ?? 0,
+    filesDeleted,
+    tagsDeleted,
+    rulesCleared: rulesCount ?? 0,
+  });
+  return NextResponse.json({ ok: true, deleted: itemCount ?? 0, filesDeleted, tagsDeleted, rulesCleared: rulesCount ?? 0 });
 });

@@ -141,13 +141,17 @@ export function ArchiveSection() {
     setClearError(null);
     setClearResult(null);
     try {
-      const result = await api.post<{ deleted: number; filesDeleted: number; tagsDeleted: number }>('/api/admin/archive/clear');
+      const result = await api.post<{ deleted: number; filesDeleted: number; tagsDeleted: number; rulesCleared: number }>(
+        '/api/admin/archive/clear'
+      );
       setClearResult(
-        `${result.deleted} ${t('admin.archiveClearDeleted')}, ${result.filesDeleted} ${t('admin.archiveClearFilesDeleted')}, ${result.tagsDeleted} ${t('admin.archiveClearTagsDeleted')}`
+        `${result.deleted} ${t('admin.archiveClearDeleted')}, ${result.filesDeleted} ${t('admin.archiveClearFilesDeleted')}, ${result.tagsDeleted} ${t('admin.archiveClearTagsDeleted')}, ${result.rulesCleared} ${t('admin.archiveClearRulesCleared')}`
       );
       invalidateArchive();
       queryClient.invalidateQueries({ queryKey: ['drive'] });
       queryClient.invalidateQueries({ queryKey: ['tags'] });
+      invalidateAdmin('archive-folder-rules');
+      invalidateAdmin('archive-drive-folders');
     } catch (err) {
       setClearError(err instanceof Error ? err.message : t('common.error'));
     } finally {

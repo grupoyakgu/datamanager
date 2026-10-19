@@ -166,11 +166,13 @@ export async function deleteFile(userId: string, fileId: string): Promise<void> 
 }
 
 /**
- * Recursively delete every FILE (not folder) under `folderId`, leaving the
- * folder structure itself intact. Walks Drive directly rather than any
+ * Recursively delete everything under `folderId` — files and subfolders
+ * alike (a subfolder is emptied first, then deleted itself) — leaving only
+ * `folderId` itself intact, now empty. Walks Drive directly rather than any
  * app database records, so it's correct even when those have drifted out
  * of sync with what's actually in Drive. Returns how many files were
- * deleted. Best-effort per file: one failure doesn't stop the rest.
+ * deleted (subfolders aren't counted). Best-effort per item: one failure
+ * doesn't stop the rest.
  */
 export async function clearFolderContents(userId: string, folderId: string): Promise<number> {
   let deleted = 0;
@@ -181,12 +183,13 @@ export async function clearFolderContents(userId: string, folderId: string): Pro
       try {
         if (file.isFolder) {
           deleted += await clearFolderContents(userId, file.id);
+          await deleteFile(userId, file.id);
         } else {
           await deleteFile(userId, file.id);
           deleted += 1;
         }
       } catch (error) {
-        console.error('Failed to delete Drive file while clearing folder', file.id, error);
+        console.error('Failed to delete Drive item while clearing folder', file.id, error);
       }
     }
     pageToken = listing.nextPageToken;
