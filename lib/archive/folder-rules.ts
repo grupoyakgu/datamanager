@@ -4,7 +4,13 @@ import type { ArchiveFolderRule } from '@/types/database';
 
 export async function listArchiveFolderRules(): Promise<ArchiveFolderRule[]> {
   const { data, error } = await getSupabaseAdmin().from('archive_folder_rules').select('*').order('pattern');
-  if (error) throw new Error(error.message);
+  if (error) {
+    // 42P01 = relation does not exist — e.g. this code deployed before its
+    // migration landed. Treat it as "no rules configured" rather than
+    // failing every archive sync until the migration is applied.
+    if (error.code === '42P01') return [];
+    throw new Error(error.message);
+  }
   return (data ?? []) as ArchiveFolderRule[];
 }
 
