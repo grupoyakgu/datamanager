@@ -16,6 +16,20 @@ export async function listArchiveFolderRules(): Promise<ArchiveFolderRule[]> {
 }
 
 /**
+ * The literal "archive" folder in the Archive mailbox's own Drive, under its
+ * configured anchor (`settings.archive_drive_folder_id`, default that
+ * account's own My Drive root) — every per-sender folder, and the Files
+ * page's browsing root, live under this one folder rather than loose in My
+ * Drive. ensureFolder finds it by name once it exists, so repeated calls
+ * all resolve to the same folder.
+ */
+export async function getArchiveDriveRootId(mailboxUserId: string): Promise<string> {
+  const settings = await getSettings();
+  const anchorId = settings.archive_drive_folder_id || 'root';
+  return ensureFolder(mailboxUserId, anchorId, 'archive');
+}
+
+/**
  * The Drive folder an archived item's attachments should be saved into, all
  * under the Archive mailbox's OWN Drive (repo@grupoyakgu.es) — not any
  * admin's personal Drive — so the mailbox is a single shared, general-use
@@ -23,9 +37,10 @@ export async function listArchiveFolderRules(): Promise<ArchiveFolderRule[]> {
  *
  * An exact email rule wins over a domain rule. When nothing matches, a new
  * folder is created (named after the sender's domain, or their full email
- * when there is none) directly under the Archive Drive root, and persisted
- * as a new domain rule so later emails from the same sender reuse it
- * instead of a new folder being created every time.
+ * when there is none) directly under the "archive" root (see
+ * getArchiveDriveRootId), and persisted as a new domain rule so later
+ * emails from the same sender reuse it instead of a new folder being
+ * created every time.
  *
  * Whichever folder is used — admin-picked, admin-created, or just
  * auto-created here — is also given org-domain-wide read access, so any
@@ -33,8 +48,7 @@ export async function listArchiveFolderRules(): Promise<ArchiveFolderRule[]> {
  * regardless of who is logged into the app.
  */
 export async function resolveArchiveFolderId(mailboxUserId: string, originalSenderEmail: string | null): Promise<string> {
-  const settings = await getSettings();
-  const archiveRoot = settings.archive_drive_folder_id || 'root';
+  const archiveRoot = await getArchiveDriveRootId(mailboxUserId);
   const supabaseAdmin = getSupabaseAdmin();
 
   const email = originalSenderEmail?.toLowerCase() ?? null;
