@@ -6,6 +6,7 @@ import { embedText } from '@/lib/ai/embeddings';
 import { parseInlineTags } from '@/lib/archive/parse-forward';
 import { exportSummaryToDrive } from './drive-export';
 import { getActiveTags, findOrCreateTagsByName } from './repository';
+import { syncActionItems } from './action-items';
 
 /**
  * Run AI extraction, tag detection, folder rules, completeness and embedding
@@ -64,6 +65,12 @@ export async function processSummary(summaryId: string, options: { applyFolderRu
       },
       settings.completeness_weights
     );
+
+    try {
+      await syncActionItems(summaryId, extraction.actionItems);
+    } catch (actionItemsError) {
+      console.error('Failed to sync action items for summary', summaryId, actionItemsError);
+    }
 
     await supabaseAdmin.from('extracted_data').upsert(
       {

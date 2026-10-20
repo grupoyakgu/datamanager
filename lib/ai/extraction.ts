@@ -174,8 +174,8 @@ Return ONLY a JSON object with these keys:
 - tags: array of tag names chosen ONLY from this dictionary, when the tag is mentioned or the content clearly relates to it. Order the array from most to least relevant/confident — the summary's Drive file gets filed under the first tag, so put the single best-fitting tag first:
 ${tagDictionary || '(empty)'}
 - language: ISO 639-1 code of the summary text (he, es, en, ...).
-- ai_summary: a clear written summary of the email, in its own original language, organized under three short headers: "Key issues for the team", "Action items", "Decisions". Keep each section concise (a few sentences or bullet points); omit a header if there's genuinely nothing for it.
-- hebrew_translation: a Hebrew translation of ai_summary. If the text's own language is already Hebrew, repeat ai_summary unchanged here.
+- ai_summary: a clear written summary of the email, in its own original language, organized under three short section headers, each on its own line as plain text (no markdown, no "#" or "*" characters): "Key issues for the team", "Action items", "Decisions". Keep each section concise (a few sentences or bullet points); omit a header if there's genuinely nothing for it.
+- hebrew_translation: the SAME summary fully translated into Hebrew, plain text, no markdown — including the three section headers themselves, which must ALSO be translated into Hebrew (e.g. "סוגיות מרכזיות לצוות", "משימות לביצוע", "החלטות"), never left in English. If the text's own language is already Hebrew, repeat ai_summary unchanged here.
 Requested fields: ${fields.join(', ')}. Return empty arrays or null for fields you cannot determine. Do not invent information.`;
 
   let raw: Record<string, unknown>;

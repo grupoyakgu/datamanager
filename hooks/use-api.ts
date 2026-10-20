@@ -3,7 +3,7 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { api } from '@/lib/api-client';
 import { useUser } from './use-user';
-import type { Folder, Tag, SummaryView } from '@/types/database';
+import type { ActionItemListEntry, ActionItemStatus, Folder, Tag, SummaryView } from '@/types/database';
 import type { SearchResponse } from '@/lib/search';
 
 export type FolderWithCount = Folder & { summary_count: number };
@@ -102,5 +102,33 @@ export function useInvalidateSummaries() {
     queryClient.invalidateQueries({ queryKey: ['tags'] });
     queryClient.invalidateQueries({ queryKey: ['folders'] });
     queryClient.invalidateQueries({ queryKey: ['people'] });
+    queryClient.invalidateQueries({ queryKey: ['action-items'] });
   };
+}
+
+/** Action items across all summaries. Default (no statuses) is the server's own default: open + in_process. */
+export function useActionItems(statuses?: ActionItemStatus[]) {
+  const { user } = useUser();
+  return useQuery({
+    queryKey: ['action-items', statuses ?? 'default'],
+    queryFn: () => {
+      const params = new URLSearchParams();
+      for (const s of statuses ?? []) params.append('status', s);
+      const qs = params.toString();
+      return api.get<ActionItemListEntry[]>(`/api/action-items${qs ? `?${qs}` : ''}`);
+    },
+    enabled: !!user,
+  });
+}
+
+export function useUpdateActionItemStatus() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, status }: { id: string; status: ActionItemStatus }) => api.patch(`/api/action-items/${id}`, { status }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['action-items'] });
+      queryClient.invalidateQueries({ queryKey: ['summary'] });
+      queryClient.invalidateQueries({ queryKey: ['summaries'] });
+    },
+  });
 }

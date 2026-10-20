@@ -5,6 +5,7 @@ import { getSupabaseAdmin } from '@/lib/supabase';
 import { getSummaryById } from '@/lib/summaries/repository';
 import { recomputeCompleteness } from '@/lib/summaries/process';
 import { deleteSummaryFromDrive, exportSummaryToDrive } from '@/lib/summaries/drive-export';
+import { syncActionItems } from '@/lib/summaries/action-items';
 
 export const dynamic = 'force-dynamic';
 
@@ -85,6 +86,14 @@ export const PATCH = handleRoute(async (request: Request, { params }: Params) =>
       .from('extracted_data')
       .upsert({ summary_id: id, ...extractedPatch }, { onConflict: 'summary_id' });
     if (error) throw new Error(error.message);
+  }
+
+  if (actionItems !== undefined && actionItems.length > 0) {
+    try {
+      await syncActionItems(id, actionItems);
+    } catch (actionItemsError) {
+      console.error('Failed to sync action items after manual edit for', id, actionItemsError);
+    }
   }
 
   const shouldRecompute =

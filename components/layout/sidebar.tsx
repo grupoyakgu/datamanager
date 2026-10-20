@@ -16,6 +16,7 @@ import {
   XIcon,
   ChevronsLeft,
   ChevronsRight,
+  ListChecksIcon,
 } from 'lucide-react';
 import { useUser } from '@/hooks/use-user';
 import { useT } from '@/lib/i18n/context';
@@ -24,6 +25,7 @@ import { cn } from '@/lib/utils';
 const menuItems = [
   { href: '/dashboard', key: 'nav.dashboard', icon: HomeIcon },
   { href: '/summaries', key: 'nav.summaries', icon: FileTextIcon },
+  { href: '/action-items', key: 'nav.actionItems', icon: ListChecksIcon },
   { href: '/files', key: 'nav.files', icon: FolderIcon },
   { href: '/tags', key: 'nav.tags', icon: TagIcon },
   { href: '/people', key: 'nav.people', icon: UsersIcon },

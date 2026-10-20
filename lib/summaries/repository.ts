@@ -1,5 +1,5 @@
 import { getSupabaseAdmin } from '@/lib/supabase';
-import type { SummaryView } from '@/types/database';
+import type { ActionItemStatus, SummaryView } from '@/types/database';
 
 export const SUMMARY_SELECT = `
   id, title, content, meeting_date, meeting_time, source, completeness_score, missing_data,
@@ -12,7 +12,8 @@ export const SUMMARY_SELECT = `
   meeting_summary_tags ( tags ( id, name ), position ),
   extracted_data ( participants, companies, topics, action_items, decisions, model, ai_error ),
   created_by_user:users!meeting_summaries_created_by_fkey ( id, name, email ),
-  summary_attachments ( id, filename, drive_file_id )
+  summary_attachments ( id, filename, drive_file_id ),
+  action_item_rows:action_items ( id, text, status )
 `;
 
 interface RawSummary {
@@ -48,6 +49,7 @@ interface RawSummary {
     | null;
   created_by_user: { id: string; name: string | null; email: string } | { id: string; name: string | null; email: string }[] | null;
   summary_attachments: { id: string; filename: string; drive_file_id: string | null }[] | null;
+  action_item_rows: { id: string; text: string; status: ActionItemStatus }[] | null;
 }
 
 function one<T>(value: T | T[] | null): T | null {
@@ -99,6 +101,7 @@ export function toSummaryView(raw: unknown, favoriteIds: Set<string> = new Set()
     companies: extracted?.companies ?? [],
     topics: extracted?.topics ?? [],
     action_items: extracted?.action_items ?? [],
+    action_item_rows: row.action_item_rows ?? [],
     decisions: extracted?.decisions ?? [],
     created_by: one(row.created_by_user),
     is_favorite: favoriteIds.has(row.id),

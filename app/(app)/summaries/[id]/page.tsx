@@ -1,26 +1,27 @@
 'use client';
 
-import { use, useState } from 'react';
+import { Suspense, use, useState } from 'react';
 import Link from 'next/link';
-import { useRouter } from 'next/navigation';
+import { useRouter, useSearchParams } from 'next/navigation';
 import { ArrowLeft, Calendar, Users, Tag as TagIcon, Folder, Mail, RefreshCw, Star, Clock, Pencil, HardDriveUpload, ExternalLink, Trash2, Paperclip, AlertTriangle } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Label } from '@/components/ui/label';
 import { Input } from '@/components/ui/input';
+import { Select } from '@/components/ui/select';
 import { Textarea } from '@/components/ui/textarea';
 import { CompletenessBadge, MissingList } from '@/components/summaries/completeness-badge';
 import { SendEmailDialog } from '@/components/summaries/send-email-dialog';
 import { LinkifiedText } from '@/components/summaries/linkified-text';
 import { formatDate } from '@/components/summaries/summary-card';
 import { EmptyState } from '@/components/layout/page-header';
-import { useSummary, useTags, useToggleFavorite, useInvalidateSummaries } from '@/hooks/use-api';
+import { useSummary, useTags, useToggleFavorite, useInvalidateSummaries, useUpdateActionItemStatus } from '@/hooks/use-api';
 import { useUser } from '@/hooks/use-user';
 import { api } from '@/lib/api-client';
 import { useT } from '@/lib/i18n/context';
 import { cn } from '@/lib/utils';
-import type { SummaryView } from '@/types/database';
+import type { ActionItemStatus, SummaryView } from '@/types/database';
 
 interface DetailsForm {
   meetingDate: string;
@@ -52,9 +53,19 @@ function toLines(value: string): string[] {
 }
 
 export default function SummaryDetailPage({ params }: { params: Promise<{ id: string }> }) {
+  return (
+    <Suspense fallback={null}>
+      <SummaryDetailContent params={params} />
+    </Suspense>
+  );
+}
+
+function SummaryDetailContent({ params }: { params: Promise<{ id: string }> }) {
   const { id } = use(params);
   const t = useT();
   const router = useRouter();
+  const searchParams = useSearchParams();
+  const fromActionItems = searchParams.get('ref') === 'action-items';
   const { user } = useUser();
   const { data: summary, isLoading, error } = useSummary(id);
   const { data: tags } = useTags();
@@ -160,8 +171,11 @@ export default function SummaryDetailPage({ params }: { params: Promise<{ id: st
 
   return (
     <div className="space-y-6">
-      <Link href="/summaries" className="inline-flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground">
-        <ArrowLeft size={16} /> {t('common.back')}
+      <Link
+        href={fromActionItems ? '/action-items' : '/summaries'}
+        className="inline-flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground"
+      >
+        <ArrowLeft size={16} /> {fromActionItems ? t('actionItems.backToActionItems') : t('common.back')}
       </Link>
 
       <header className="space-y-3">
@@ -357,7 +371,7 @@ export default function SummaryDetailPage({ params }: { params: Promise<{ id: st
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                   <InfoList title={t('summaries.participants')} items={summary.participants} />
                   <InfoList title={t('summaries.topics')} items={summary.topics} />
-                  <InfoList title={t('summaries.actionItems')} items={summary.action_items} />
+                  <ActionItemsPanel summary={summary} />
                   <InfoList title={t('summaries.decisions')} items={summary.decisions} />
                   <InfoList title={t('summaries.companies')} items={summary.companies} />
                 </div>
@@ -484,6 +498,48 @@ function EditableListField({ label, value, onChange }: { label: string; value: s
         <span className="text-xs text-muted-foreground">{t('summaries.oneItemPerLine')}</span>
       </div>
       <Textarea rows={3} value={value} onChange={(e) => onChange(e.target.value)} />
+    </div>
+  );
+}
+
+function ActionItemsPanel({ summary }: { summary: SummaryView }) {
+  const t = useT();
+  const updateStatus = useUpdateActionItemStatus();
+  const rows = summary.action_item_rows;
+
+  if (rows.length === 0) {
+    // No tracked rows yet (e.g. extracted before this feature existed) — fall back to the plain text list.
+    return <InfoList title={t('summaries.actionItems')} items={summary.action_items} />;
+  }
+
+  const closed = rows.filter((r) => r.status === 'closed').length;
+
+  return (
+    <div>
+      <h3 className="font-medium mb-2">
+        {t('summaries.actionItems')}{' '}
+        <span className="text-sm font-normal text-muted-foreground">
+          ({closed}/{rows.length} {t('actionItems.resolved')})
+        </span>
+      </h3>
+      <ul className="space-y-2">
+        {rows.map((item) => (
+          <li key={item.id} className="flex items-center justify-between gap-3 text-sm">
+            <span className="min-w-0 flex-1 break-words">
+              <LinkifiedText text={item.text} />
+            </span>
+            <Select
+              value={item.status}
+              onChange={(e) => updateStatus.mutate({ id: item.id, status: e.target.value as ActionItemStatus })}
+              className="h-8 w-32 shrink-0 text-xs"
+            >
+              <option value="open">{t('actionItems.statusOpen')}</option>
+              <option value="in_process">{t('actionItems.statusInProcess')}</option>
+              <option value="closed">{t('actionItems.statusClosed')}</option>
+            </Select>
+          </li>
+        ))}
+      </ul>
     </div>
   );
 }

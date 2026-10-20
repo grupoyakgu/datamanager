@@ -2,7 +2,7 @@
 
 import { Suspense, useEffect, useMemo, useRef, useState } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
-import { ArrowLeft, Plus, RefreshCw, Sparkles, Star } from 'lucide-react';
+import { ArrowLeft, RefreshCw, Sparkles, Star } from 'lucide-react';
 import { PageHeader, EmptyState } from '@/components/layout/page-header';
 import { SearchBar } from '@/components/summaries/search-bar';
 import { formatDate } from '@/components/summaries/summary-card';
@@ -11,13 +11,10 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Select } from '@/components/ui/select';
 import { Label } from '@/components/ui/label';
-import { Dialog } from '@/components/ui/dialog';
-import { Textarea } from '@/components/ui/textarea';
 import { Badge } from '@/components/ui/badge';
 import { Card, CardContent } from '@/components/ui/card';
 import { Table, THead, TBody, TR, TH, TD } from '@/components/ui/table';
 import {
-  useFolders,
   useDriveRootFolders,
   useSummaries,
   useTags,
@@ -47,7 +44,6 @@ function SummariesContent() {
   const t = useT();
   const router = useRouter();
   const searchParams = useSearchParams();
-  const { data: folders } = useFolders();
   const { data: driveFolders } = useDriveRootFolders();
   const { data: tags } = useTags();
   const invalidate = useInvalidateSummaries();
@@ -67,7 +63,6 @@ function SummariesContent() {
   const [askResult, setAskResult] = useState<SearchResponse | null>(null);
   const [asking, setAsking] = useState(false);
   const [askError, setAskError] = useState<string | null>(null);
-  const [showNew, setShowNew] = useState(false);
 
   const filters = useMemo<SummaryFilters>(() => {
     const resolved = period && period !== 'custom' ? resolvePeriod(period) : { from: dateFrom || null, to: dateTo || null };
@@ -152,10 +147,6 @@ function SummariesContent() {
             <Button variant="outline" onClick={syncNow} disabled={syncing}>
               <RefreshCw size={16} className={cn('mr-1', syncing && 'animate-spin')} />
               {syncing ? t('dashboard.syncing') : t('summaries.syncNow')}
-            </Button>
-            <Button onClick={() => setShowNew(true)} variant="outline">
-              <Plus size={16} className="mr-1" />
-              {t('summaries.newSummary')}
             </Button>
           </div>
         }
@@ -290,6 +281,7 @@ function SummariesContent() {
                 <TH>{t('summaries.participants')}</TH>
                 <TH>{t('summaries.tags')}</TH>
                 <TH>{t('summaries.folder')}</TH>
+                <TH>{t('actionItems.title')}</TH>
                 <TH>{t('summaries.completenessColumn')}</TH>
                 <TH />
               </TR>
@@ -303,7 +295,12 @@ function SummariesContent() {
                   <TD className="text-muted-foreground truncate max-w-[10rem]">
                     {summary.tags.map((tag) => tag.name).join(', ') || '—'}
                   </TD>
-                  <TD className="text-muted-foreground whitespace-nowrap">{summary.folder?.name ?? '—'}</TD>
+                  <TD className="text-muted-foreground whitespace-nowrap">{summary.drive_folder_name ?? '—'}</TD>
+                  <TD className="text-muted-foreground whitespace-nowrap">
+                    {summary.action_item_rows.length > 0
+                      ? `${summary.action_item_rows.filter((r) => r.status === 'closed').length}/${summary.action_item_rows.length}`
+                      : '—'}
+                  </TD>
                   <TD>
                     <CompletenessBadge score={summary.completeness_score} />
                   </TD>
@@ -324,97 +321,6 @@ function SummariesContent() {
         )}
       </div>
 
-      <NewSummaryDialog
-        open={showNew}
-        onClose={() => setShowNew(false)}
-        folders={folders ?? []}
-        onCreated={(summary) => {
-          setShowNew(false);
-          invalidate();
-          router.push(`/summaries/${summary.id}`);
-        }}
-      />
     </div>
-  );
-}
-
-function NewSummaryDialog({
-  open,
-  onClose,
-  folders,
-  onCreated,
-}: {
-  open: boolean;
-  onClose: () => void;
-  folders: { id: string; name: string; is_default: boolean }[];
-  onCreated: (summary: SummaryView) => void;
-}) {
-  const t = useT();
-  const [title, setTitle] = useState('');
-  const [content, setContent] = useState('');
-  const [folderId, setFolderId] = useState('');
-  const [meetingDate, setMeetingDate] = useState('');
-  const [saving, setSaving] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-
-  const submit = async () => {
-    setSaving(true);
-    setError(null);
-    try {
-      const summary = await api.post<SummaryView>('/api/summaries', {
-        title,
-        content,
-        folderId: folderId || undefined,
-        meetingDate: meetingDate || null,
-      });
-      setTitle('');
-      setContent('');
-      onCreated(summary);
-    } catch (err) {
-      setError(err instanceof Error ? err.message : t('common.error'));
-    } finally {
-      setSaving(false);
-    }
-  };
-
-  return (
-    <Dialog open={open} onClose={onClose} title={t('summaries.newSummary')}>
-      <div className="space-y-3">
-        <div className="space-y-1">
-          <Label>{t('summaries.manualTitle')}</Label>
-          <Input value={title} onChange={(e) => setTitle(e.target.value)} />
-        </div>
-        <div className="grid grid-cols-2 gap-3">
-          <div className="space-y-1">
-            <Label>{t('summaries.meetingDate')}</Label>
-            <Input type="date" value={meetingDate} onChange={(e) => setMeetingDate(e.target.value)} />
-          </div>
-          <div className="space-y-1">
-            <Label>{t('summaries.folder')}</Label>
-            <Select value={folderId} onChange={(e) => setFolderId(e.target.value)}>
-              <option value="">{folders.find((f) => f.is_default)?.name ?? t('admin.defaultFolder')}</option>
-              {folders.map((f) => (
-                <option key={f.id} value={f.id}>
-                  {f.name}
-                </option>
-              ))}
-            </Select>
-          </div>
-        </div>
-        <div className="space-y-1">
-          <Label>{t('summaries.manualContent')}</Label>
-          <Textarea rows={8} value={content} onChange={(e) => setContent(e.target.value)} />
-        </div>
-        {error && <p className="text-sm text-destructive">{error}</p>}
-        <div className="flex justify-end gap-2">
-          <Button variant="outline" onClick={onClose}>
-            {t('common.cancel')}
-          </Button>
-          <Button onClick={submit} disabled={saving || !title.trim() || !content.trim()}>
-            {saving ? t('common.loading') : t('common.create')}
-          </Button>
-        </div>
-      </div>
-    </Dialog>
   );
 }

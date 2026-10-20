@@ -126,10 +126,26 @@ export interface SummaryView {
   companies: string[];
   topics: string[];
   action_items: string[];
+  action_item_rows: ActionItemRow[];
   decisions: string[];
   created_by: { id: string; name: string | null; email: string } | null;
   is_favorite: boolean;
   similarity?: number;
+}
+
+export type ActionItemStatus = 'open' | 'in_process' | 'closed';
+
+export interface ActionItemRow {
+  id: string;
+  text: string;
+  status: ActionItemStatus;
+}
+
+/** One action item plus enough context to find its way back to the summary it came from. */
+export interface ActionItemListEntry extends ActionItemRow {
+  created_at: string;
+  updated_at: string;
+  summary: { id: string; title: string } | null;
 }
 
 export interface ArchiveAttachmentView {
