@@ -531,7 +531,7 @@ function ActionItemsPanel({ summary }: { summary: SummaryView }) {
             <Select
               value={item.status}
               onChange={(e) => updateStatus.mutate({ id: item.id, status: e.target.value as ActionItemStatus })}
-              className="h-8 w-32 shrink-0 text-xs"
+              className="h-9 w-32 shrink-0 py-1 text-xs"
             >
               <option value="open">{t('actionItems.statusOpen')}</option>
               <option value="in_process">{t('actionItems.statusInProcess')}</option>

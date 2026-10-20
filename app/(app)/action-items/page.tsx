@@ -57,7 +57,7 @@ export default function ActionItemsPage() {
                   <Select
                     value={item.status}
                     onChange={(e) => updateStatus.mutate({ id: item.id, status: e.target.value as ActionItemStatus })}
-                    className="h-8 w-36"
+                    className="h-9 w-36 py-1"
                   >
                     <option value="open">{t('actionItems.statusOpen')}</option>
                     <option value="in_process">{t('actionItems.statusInProcess')}</option>
