@@ -29,11 +29,15 @@ export async function backfillSummaryFolderRules(mailboxUserId: string): Promise
   const supabaseAdmin = getSupabaseAdmin();
   const [{ data: summaries }, { data: existingRules }] = await Promise.all([
     supabaseAdmin.from('meeting_summaries').select('drive_folder_name').not('drive_folder_name', 'is', null),
-    supabaseAdmin.from('summary_folder_rules').select('pattern'),
+    supabaseAdmin.from('summary_folder_rules').select('drive_folder_name'),
   ]);
-  const existingPatterns = new Set((existingRules ?? []).map((r) => r.pattern as string));
+  // Compare against existing rules' DISPLAY names, not their pattern (the
+  // domain) — once a rule is renamed those diverge, and comparing against
+  // pattern would make every summary filed under the new display name look
+  // "unregistered" again, creating a duplicate rule for it on every call.
+  const existingNames = new Set((existingRules ?? []).map((r) => r.drive_folder_name as string));
   const missing = Array.from(new Set((summaries ?? []).map((s) => s.drive_folder_name as string))).filter(
-    (name) => !existingPatterns.has(name)
+    (name) => !existingNames.has(name)
   );
   if (missing.length === 0) return;
 
