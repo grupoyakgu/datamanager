@@ -44,12 +44,16 @@ export async function ingestSummaryMessage(
   const originalSenderName = parsed.isForward ? parsed.originalSenderName : forwardedBy.name;
   const originalSenderEmail = parsed.isForward ? parsed.originalSenderEmail : forwardedBy.email;
   const subject = (parsed.isForward ? parsed.originalSubject : null) || message.subject || 'Untitled';
+  // Drop the forwarder's own preamble and the "Forwarded message" marker
+  // line, so the stored content starts at the original message's own
+  // "From:" header — only when the marker's position was actually found.
+  const content = parsed.isForward && parsed.forwardedBody ? parsed.forwardedBody : message.bodyText;
 
   const { data: inserted, error } = await supabaseAdmin
     .from('meeting_summaries')
     .insert({
       title: cleanTitle(subject),
-      content: message.bodyText,
+      content,
       original_email_id: message.messageIdHeader,
       gmail_message_id: message.id,
       email_from: message.from,

@@ -16,6 +16,43 @@ export async function listSummaryFolderRules(): Promise<SummaryFolderRule[]> {
 }
 
 /**
+ * Create a rule for any sender-domain folder a summary is already filed
+ * under (drive_folder_name) that predates this table — e.g. summaries
+ * exported before this feature existed. Without this, those folders exist
+ * in Drive and are referenced by summaries, but have nothing in the admin
+ * UI to rename. Treats each distinct `drive_folder_name` as the pattern
+ * (exactly what resolveSummaryFolderId would have used), looks up (or
+ * creates, if it was somehow deleted) the matching Drive folder, and
+ * persists a rule for it. Idempotent and safe to call on every list.
+ */
+export async function backfillSummaryFolderRules(mailboxUserId: string): Promise<void> {
+  const supabaseAdmin = getSupabaseAdmin();
+  const [{ data: summaries }, { data: existingRules }] = await Promise.all([
+    supabaseAdmin.from('meeting_summaries').select('drive_folder_name').not('drive_folder_name', 'is', null),
+    supabaseAdmin.from('summary_folder_rules').select('pattern'),
+  ]);
+  const existingPatterns = new Set((existingRules ?? []).map((r) => r.pattern as string));
+  const missing = Array.from(new Set((summaries ?? []).map((s) => s.drive_folder_name as string))).filter(
+    (name) => !existingPatterns.has(name)
+  );
+  if (missing.length === 0) return;
+
+  const summariesRoot = await getSummariesDriveRootId(mailboxUserId);
+  for (const name of missing) {
+    try {
+      const folderId = await ensureFolder(mailboxUserId, summariesRoot, name);
+      const patternType: 'email' | 'domain' = name.includes('@') ? 'email' : 'domain';
+      const { error } = await supabaseAdmin
+        .from('summary_folder_rules')
+        .insert({ pattern: name, pattern_type: patternType, drive_folder_id: folderId, drive_folder_name: name });
+      if (error && error.code !== '23505') console.error('Failed to backfill summary folder rule', name, error);
+    } catch (error) {
+      console.error('Failed to backfill summary folder rule', name, error);
+    }
+  }
+}
+
+/**
  * The literal "summaries" folder in the Archive mailbox's own Drive, under
  * its configured anchor (`settings.archive_drive_folder_id`) — sibling to
  * the "archive" folder (see lib/archive/folder-rules.ts).

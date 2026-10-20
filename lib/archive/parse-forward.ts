@@ -7,6 +7,15 @@ export interface ParsedForward {
   originalSenderName: string | null;
   originalSenderEmail: string | null;
   originalSubject: string | null;
+  /**
+   * The original message, starting at its own "From:" header line (so the
+   * forwarder's own preamble and the "---------- Forwarded message
+   * ---------" marker are both dropped) — only set when the heuristic found
+   * the marker itself; null when a forward was identified some other way
+   * (e.g. AI-only on a non-Gmail format), since there's then no reliable
+   * position to cut from.
+   */
+  forwardedBody: string | null;
 }
 
 const NOT_A_FORWARD: ParsedForward = {
@@ -15,6 +24,7 @@ const NOT_A_FORWARD: ParsedForward = {
   originalSenderName: null,
   originalSenderEmail: null,
   originalSubject: null,
+  forwardedBody: null,
 };
 
 /** Parse "Name <email@x.com>", a bare email, or a bare display name. */
@@ -51,6 +61,7 @@ export function parseForwardHeuristic(bodyText: string): ParsedForward {
     originalSenderName: address.name,
     originalSenderEmail: address.email,
     originalSubject: subjectMatch ? subjectMatch[1].trim() : null,
+    forwardedBody: bodyText.slice(marker.index + marker[0].length).trimStart() || null,
   };
 }
 
@@ -90,6 +101,7 @@ If is_forward is false, return null for the other four fields.`;
           : heuristic.originalSenderEmail,
       originalSubject:
         typeof raw.original_subject === 'string' && raw.original_subject.trim() ? raw.original_subject.trim() : heuristic.originalSubject,
+      forwardedBody: heuristic.forwardedBody,
     };
   } catch (error) {
     console.error('AI forward parsing failed, using heuristic:', error);

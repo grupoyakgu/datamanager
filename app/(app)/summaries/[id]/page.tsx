@@ -21,6 +21,7 @@ import { useUser } from '@/hooks/use-user';
 import { api } from '@/lib/api-client';
 import { useT } from '@/lib/i18n/context';
 import { cn } from '@/lib/utils';
+import { prettySenderName } from '@/lib/archive/display-name';
 import type { ActionItemStatus, SummaryView } from '@/types/database';
 
 interface DetailsForm {
@@ -399,10 +400,14 @@ function SummaryDetailContent({ params }: { params: Promise<{ id: string }> }) {
 
           <Card>
             <CardContent className="pt-5 text-sm space-y-2">
-              <Row label={t('summaries.source')} value={summary.source === 'gmail' ? 'Gmail' : 'Manual'} />
+              {(summary.original_sender_name || summary.original_sender_email) && (
+                <Row
+                  label={t('summaries.source')}
+                  value={prettySenderName(summary.original_sender_name, summary.original_sender_email) ?? '—'}
+                />
+              )}
               {summary.email_from && <Row label={t('summaries.receivedFrom')} value={summary.email_from} />}
               {summary.email_received_at && <Row label={t('summaries.received')} value={new Date(summary.email_received_at).toLocaleString()} />}
-              {summary.created_by && <Row label={t('summaries.addedBy')} value={summary.created_by.name ?? summary.created_by.email} />}
 
               <div className="pt-2 border-t border-border space-y-1">
                 <div className="flex items-center justify-between">
