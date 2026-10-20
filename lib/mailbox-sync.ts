@@ -1,6 +1,6 @@
 import { getSupabaseAdmin } from '@/lib/supabase';
 import { getSettings } from '@/lib/settings';
-import { getMessage, listMessageIds } from '@/lib/google/gmail';
+import { getMessage, listMessageIds, trashMessage } from '@/lib/google/gmail';
 import { GoogleAuthError } from '@/lib/google/oauth';
 import { logAudit } from '@/lib/auth';
 import { getDefaultFolderId } from '@/lib/summaries/repository';
@@ -88,6 +88,15 @@ export async function syncRepoMailbox(): Promise<{ archive: ArchiveSyncResult; s
           await logAudit(mailboxUser.id, 'summary.ingested', 'meeting_summary', summaryId, { gmail_message_id: id });
           try {
             await processSummary(summaryId);
+            // Once a summary is fully processed, its content lives in the
+            // database, so the source email can be moved out of the inbox —
+            // mirrors Archive's "forward to save" one-way behavior. Left in
+            // place on failure so a later sync can retry.
+            try {
+              await trashMessage(mailboxUser.id, message.id);
+            } catch (trashError) {
+              console.error('Failed to trash processed summary email', id, trashError);
+            }
           } catch (processError) {
             console.error('Processing failed for summary', summaryId, processError);
             summaries.failed += 1;

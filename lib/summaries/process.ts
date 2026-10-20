@@ -3,8 +3,9 @@ import { getSettings } from '@/lib/settings';
 import { computeCompleteness } from '@/lib/completeness';
 import { extractFromSummary } from '@/lib/ai/extraction';
 import { embedText } from '@/lib/ai/embeddings';
+import { parseInlineTags } from '@/lib/archive/parse-forward';
 import { exportSummaryToDrive } from './drive-export';
-import { getActiveTags } from './repository';
+import { getActiveTags, findOrCreateTagsByName } from './repository';
 
 /**
  * Run AI extraction, tag detection, folder rules, completeness and embedding
@@ -30,9 +31,16 @@ export async function processSummary(summaryId: string, options: { applyFolderRu
       fields: settings.extraction_fields,
     });
 
-    const tagRows = extraction.tags
+    const aiTagRows = extraction.tags
       .map((name) => tags.find((t) => t.name === name))
       .filter((t): t is { id: string; name: string; aliases: string[] } => !!t);
+
+    // Sender-declared "tags:a, b" line in the body (see parse-forward.ts) —
+    // same free-form syntax the Archive module uses, can create brand-new
+    // tags. Appended after the AI-detected ones so those keep priority.
+    const inlineTagNames = parseInlineTags(summary.content);
+    const inlineTagRows = inlineTagNames.length > 0 ? await findOrCreateTagsByName(inlineTagNames) : [];
+    const tagRows = [...aiTagRows, ...inlineTagRows.filter((t) => !aiTagRows.some((a) => a.id === t.id))];
 
     await supabaseAdmin.from('meeting_summary_tags').delete().eq('summary_id', summaryId);
     if (tagRows.length > 0) {
@@ -49,7 +57,7 @@ export async function processSummary(summaryId: string, options: { applyFolderRu
         meetingDate: extraction.meetingDate ?? summary.meeting_date,
         participants: extraction.participants,
         topics: extraction.topics,
-        tags: extraction.tags,
+        tags: tagRows.map((t) => t.name),
         companies: extraction.companies,
         decisions: extraction.decisions,
         actionItems: extraction.actionItems,

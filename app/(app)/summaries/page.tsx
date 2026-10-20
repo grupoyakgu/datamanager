@@ -2,10 +2,11 @@
 
 import { Suspense, useEffect, useMemo, useRef, useState } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
-import { Plus, Sparkles } from 'lucide-react';
+import { ArrowLeft, Plus, RefreshCw, Sparkles, Star } from 'lucide-react';
 import { PageHeader, EmptyState } from '@/components/layout/page-header';
 import { SearchBar } from '@/components/summaries/search-bar';
-import { SummaryCard } from '@/components/summaries/summary-card';
+import { formatDate } from '@/components/summaries/summary-card';
+import { CompletenessBadge } from '@/components/summaries/completeness-badge';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Select } from '@/components/ui/select';
@@ -14,12 +15,23 @@ import { Dialog } from '@/components/ui/dialog';
 import { Textarea } from '@/components/ui/textarea';
 import { Badge } from '@/components/ui/badge';
 import { Card, CardContent } from '@/components/ui/card';
-import { useFolders, useDriveRootFolders, useSummaries, useTags, useInvalidateSummaries, type SummaryFilters } from '@/hooks/use-api';
+import { Table, THead, TBody, TR, TH, TD } from '@/components/ui/table';
+import {
+  useFolders,
+  useDriveRootFolders,
+  useSummaries,
+  useTags,
+  useInvalidateSummaries,
+  useToggleFavorite,
+  type SummaryFilters,
+} from '@/hooks/use-api';
 import { api } from '@/lib/api-client';
 import { useT } from '@/lib/i18n/context';
 import { resolvePeriod } from '@/lib/ai/query-parser';
+import { cn } from '@/lib/utils';
 import type { SearchResponse } from '@/lib/search';
 import type { SummaryView } from '@/types/database';
+import type { ArchiveSyncResult, SummarySyncResult } from '@/lib/mailbox-sync';
 
 type Period = '' | 'today' | 'this_week' | 'this_month' | 'last_month' | 'custom';
 
@@ -39,6 +51,9 @@ function SummariesContent() {
   const { data: driveFolders } = useDriveRootFolders();
   const { data: tags } = useTags();
   const invalidate = useInvalidateSummaries();
+  const toggleFavorite = useToggleFavorite();
+  const [syncing, setSyncing] = useState(false);
+  const [syncMessage, setSyncMessage] = useState<string | null>(null);
 
   const initialAsk = searchParams.get('ask');
   const [query, setQuery] = useState(initialAsk ?? searchParams.get('q') ?? '');
@@ -107,20 +122,57 @@ function SummariesContent() {
   const results: SummaryView[] = askResult ? askResult.results : data?.results ?? [];
   const hasFilters = !!(query || period || driveFolder || tagId || participant || incomplete || askResult);
 
+  const syncNow = async () => {
+    setSyncing(true);
+    setSyncMessage(null);
+    try {
+      const result = await api.post<{ archive: ArchiveSyncResult; summaries: SummarySyncResult }>('/api/archive/sync');
+      setSyncMessage(
+        result.summaries.error
+          ? result.summaries.error
+          : !result.summaries.connected
+            ? t('archive.mailboxNotConnected')
+            : `${result.summaries.created} ${t('admin.created')}, ${result.summaries.skipped} ${t('admin.skipped')}, ${result.summaries.failed} ${t('admin.failed')}`
+      );
+      invalidate();
+    } catch (err) {
+      setSyncMessage(err instanceof Error ? err.message : t('common.error'));
+    } finally {
+      setSyncing(false);
+    }
+  };
+
   return (
     <div>
       <PageHeader
         title={t('summaries.title')}
         subtitle={t('summaries.subtitle')}
         actions={
-          <Button onClick={() => setShowNew(true)} variant="outline">
-            <Plus size={16} className="mr-1" />
-            {t('summaries.newSummary')}
-          </Button>
+          <div className="flex items-center gap-2">
+            <Button variant="outline" onClick={syncNow} disabled={syncing}>
+              <RefreshCw size={16} className={cn('mr-1', syncing && 'animate-spin')} />
+              {syncing ? t('dashboard.syncing') : t('summaries.syncNow')}
+            </Button>
+            <Button onClick={() => setShowNew(true)} variant="outline">
+              <Plus size={16} className="mr-1" />
+              {t('summaries.newSummary')}
+            </Button>
+          </div>
         }
       />
+      {syncMessage && <p className="text-sm text-muted-foreground mb-3">{syncMessage}</p>}
 
       <div className="space-y-4">
+        {hasFilters && (
+          <button
+            type="button"
+            onClick={clearFilters}
+            className="inline-flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground"
+          >
+            <ArrowLeft size={16} /> {t('summaries.backToSummaries')}
+          </button>
+        )}
+
         <SearchBar
           key={searchParams.get('q') ?? 'search'}
           initialValue={query}
@@ -187,29 +239,24 @@ function SummariesContent() {
           </div>
         </div>
 
-        {hasFilters && (
+        {askResult?.interpreted && (
           <div className="flex items-center gap-3 flex-wrap text-sm">
-            <Button variant="ghost" size="sm" onClick={clearFilters}>
-              {t('common.clearFilters')}
-            </Button>
-            {askResult?.interpreted && (
-              <span className="text-muted-foreground flex flex-wrap items-center gap-1">
-                {t('summaries.interpretedAs')}:
-                <Badge variant="secondary">{askResult.interpreted.semanticQuery}</Badge>
-                {askResult.interpreted.dateFrom && (
-                  <Badge variant="outline">
-                    {askResult.interpreted.dateFrom} → {askResult.interpreted.dateTo ?? '…'}
-                  </Badge>
-                )}
-                {askResult.interpreted.participant && <Badge variant="outline">👥 {askResult.interpreted.participant}</Badge>}
-                {askResult.interpreted.tags.map((tag) => (
-                  <Badge key={tag} variant="outline">
-                    🏷 {tag}
-                  </Badge>
-                ))}
-                {askResult.mode === 'semantic' && <Badge variant="success">{t('summaries.semanticResults')}</Badge>}
-              </span>
-            )}
+            <span className="text-muted-foreground flex flex-wrap items-center gap-1">
+              {t('summaries.interpretedAs')}:
+              <Badge variant="secondary">{askResult.interpreted.semanticQuery}</Badge>
+              {askResult.interpreted.dateFrom && (
+                <Badge variant="outline">
+                  {askResult.interpreted.dateFrom} → {askResult.interpreted.dateTo ?? '…'}
+                </Badge>
+              )}
+              {askResult.interpreted.participant && <Badge variant="outline">👥 {askResult.interpreted.participant}</Badge>}
+              {askResult.interpreted.tags.map((tag) => (
+                <Badge key={tag} variant="outline">
+                  🏷 {tag}
+                </Badge>
+              ))}
+              {askResult.mode === 'semantic' && <Badge variant="success">{t('summaries.semanticResults')}</Badge>}
+            </span>
           </div>
         )}
 
@@ -235,11 +282,45 @@ function SummariesContent() {
         ) : results.length === 0 ? (
           <EmptyState>{t('common.noResults')}</EmptyState>
         ) : (
-          <div className="grid gap-3">
-            {results.map((summary) => (
-              <SummaryCard key={summary.id} summary={summary} />
-            ))}
-          </div>
+          <Table>
+            <THead>
+              <TR>
+                <TH>{t('summaries.manualTitle')}</TH>
+                <TH>{t('summaries.meetingDate')}</TH>
+                <TH>{t('summaries.participants')}</TH>
+                <TH>{t('summaries.tags')}</TH>
+                <TH>{t('summaries.folder')}</TH>
+                <TH>{t('summaries.completenessColumn')}</TH>
+                <TH />
+              </TR>
+            </THead>
+            <TBody>
+              {results.map((summary) => (
+                <TR key={summary.id} className="cursor-pointer" onClick={() => router.push(`/summaries/${summary.id}`)}>
+                  <TD className="font-medium max-w-xs truncate">{summary.title}</TD>
+                  <TD className="text-muted-foreground whitespace-nowrap">{formatDate(summary.meeting_date) ?? t('summaries.noDate')}</TD>
+                  <TD className="text-muted-foreground truncate max-w-[12rem]">{summary.participants.join(', ') || '—'}</TD>
+                  <TD className="text-muted-foreground truncate max-w-[10rem]">
+                    {summary.tags.map((tag) => tag.name).join(', ') || '—'}
+                  </TD>
+                  <TD className="text-muted-foreground whitespace-nowrap">{summary.folder?.name ?? '—'}</TD>
+                  <TD>
+                    <CompletenessBadge score={summary.completeness_score} />
+                  </TD>
+                  <TD onClick={(e) => e.stopPropagation()} className="text-right">
+                    <button
+                      type="button"
+                      className="text-muted-foreground hover:text-amber-500"
+                      onClick={() => toggleFavorite.mutate({ id: summary.id, isFavorite: summary.is_favorite })}
+                      aria-label={summary.is_favorite ? t('summaries.unfavorite') : t('summaries.favorite')}
+                    >
+                      <Star size={16} className={cn(summary.is_favorite && 'fill-amber-400 text-amber-500')} />
+                    </button>
+                  </TD>
+                </TR>
+              ))}
+            </TBody>
+          </Table>
         )}
       </div>
 

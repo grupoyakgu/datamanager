@@ -140,6 +140,9 @@ export const en = {
     driveFolder: 'Drive folder',
     noDriveFolder: 'Not filed yet',
     attachments: 'Attachments',
+    syncNow: 'Sync now',
+    backToSummaries: 'Back to Meeting Summaries',
+    completenessColumn: 'Completeness',
   },
   missingFields: {
     meeting_date: 'Meeting Date',
@@ -463,6 +466,9 @@ export const es: DeepStringRecord = {
     driveFolder: 'Carpeta de Drive',
     noDriveFolder: 'Aún no archivado',
     attachments: 'Adjuntos',
+    syncNow: 'Sincronizar ahora',
+    backToSummaries: 'Volver a Resúmenes de reuniones',
+    completenessColumn: 'Completitud',
   },
   missingFields: {
     meeting_date: 'Fecha de la reunión',
