@@ -3,7 +3,7 @@
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { api } from '@/lib/api-client';
 import type { AppSettings } from '@/lib/settings';
-import type { User, ArchiveFolderRule } from '@/types/database';
+import type { User, ArchiveFolderRule, SummaryFolderRule } from '@/types/database';
 
 export interface AdminUser extends User {
   connection: { status: string; last_sync_at: string | null; last_error: string | null; scopes: string[] } | null;
@@ -29,6 +29,13 @@ export function useArchiveDriveFolders() {
   return useQuery({
     queryKey: ['archive-drive-folders'],
     queryFn: () => api.get<{ id: string; name: string }[]>('/api/admin/archive-drive-folders'),
+  });
+}
+
+export function useSummaryFolderRules() {
+  return useQuery({
+    queryKey: ['summary-folder-rules'],
+    queryFn: () => api.get<SummaryFolderRule[]>('/api/admin/summary-folder-rules'),
   });
 }
 

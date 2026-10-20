@@ -4,7 +4,7 @@ import { requireAdmin, logAudit } from '@/lib/auth';
 import { getSupabaseAdmin } from '@/lib/supabase';
 import { clearFolderContents } from '@/lib/google/drive';
 import { getArchiveMailboxUser } from '@/lib/archive/sync';
-import { getSummariesDriveRootId } from '@/lib/summaries/drive-export';
+import { getSummariesDriveRootId } from '@/lib/summaries/folder-rules';
 
 export const dynamic = 'force-dynamic';
 export const maxDuration = 300;
@@ -23,6 +23,9 @@ export const POST = handleRoute(async (request: Request) => {
   const { count: summaryCount } = await supabaseAdmin.from('meeting_summaries').select('id', { count: 'exact', head: true });
   const { error } = await supabaseAdmin.from('meeting_summaries').delete().not('id', 'is', null);
   if (error) throw new Error(error.message);
+
+  const { count: rulesCount } = await supabaseAdmin.from('summary_folder_rules').select('id', { count: 'exact', head: true });
+  await supabaseAdmin.from('summary_folder_rules').delete().not('id', 'is', null);
 
   let tagsDeleted = 0;
   const [{ data: usedByArchive }, { data: allTags }] = await Promise.all([
@@ -52,6 +55,7 @@ export const POST = handleRoute(async (request: Request) => {
     deleted: summaryCount ?? 0,
     filesDeleted,
     tagsDeleted,
+    rulesCleared: rulesCount ?? 0,
   });
-  return NextResponse.json({ ok: true, deleted: summaryCount ?? 0, filesDeleted, tagsDeleted });
+  return NextResponse.json({ ok: true, deleted: summaryCount ?? 0, filesDeleted, tagsDeleted, rulesCleared: rulesCount ?? 0 });
 });

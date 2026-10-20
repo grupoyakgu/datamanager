@@ -1,9 +1,9 @@
 import { getSupabaseAdmin } from '@/lib/supabase';
-import { getSettings } from '@/lib/settings';
-import { deleteFile, ensureDomainReaderAccess, ensureFolder, setDocParents, uploadFile } from '@/lib/google/drive';
+import { deleteFile, setDocParents, uploadFile } from '@/lib/google/drive';
 import { GoogleAuthError } from '@/lib/google/oauth';
 import { getArchiveMailboxUser } from '@/lib/archive/sync';
 import { generateSummaryDocx } from './docx-export';
+import { resolveSummaryFolderId } from './folder-rules';
 
 const DOCX_MIME = 'application/vnd.openxmlformats-officedocument.wordprocessingml.document';
 
@@ -25,36 +25,6 @@ export function splitExtension(filename: string): { base: string; ext: string } 
   const dot = filename.lastIndexOf('.');
   if (dot <= 0) return { base: filename, ext: '' };
   return { base: filename.slice(0, dot), ext: filename.slice(dot) };
-}
-
-/** The literal "summaries" folder in the Archive mailbox's own Drive, sibling to "archive". */
-export async function getSummariesDriveRootId(mailboxUserId: string): Promise<string> {
-  const settings = await getSettings();
-  const anchorId = settings.archive_drive_folder_id || 'root';
-  return ensureFolder(mailboxUserId, anchorId, 'summaries');
-}
-
-/**
- * The Drive folder a summary should be filed under: a folder named after the
- * ORIGINAL sender's email domain (the team member who forwarded it to
- * repo@grupoyakgu.es doesn't matter — see ingestSummaryMessage), created on
- * first use directly under the "summaries" root, and shared domain-wide for
- * read access the same way Archive folders are.
- */
-async function resolveSummaryFolderId(mailboxUserId: string, senderEmail: string | null): Promise<{ id: string; name: string }> {
-  const root = await getSummariesDriveRootId(mailboxUserId);
-  const domain = senderEmail?.toLowerCase().split('@')[1] || 'unknown';
-  const folderId = await ensureFolder(mailboxUserId, root, domain);
-
-  try {
-    const { data: mailboxUser } = await getSupabaseAdmin().from('users').select('email').eq('id', mailboxUserId).maybeSingle();
-    const mailboxDomain = mailboxUser?.email ? (mailboxUser.email as string).split('@')[1] : null;
-    if (mailboxDomain) await ensureDomainReaderAccess(mailboxUserId, folderId, mailboxDomain);
-  } catch (shareError) {
-    console.error('Failed to grant domain access on summaries folder', folderId, shareError);
-  }
-
-  return { id: folderId, name: domain };
 }
 
 /**

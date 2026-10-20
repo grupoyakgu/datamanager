@@ -192,6 +192,9 @@ export interface ArchiveFolderRule {
   created_at: string;
 }
 
+/** Same as ArchiveFolderRule, for the Summaries module's own sender→folder rules. */
+export type SummaryFolderRule = ArchiveFolderRule;
+
 /** One attachment matched by a tag search, with enough context to open it and
  * see where it came from. */
 export interface ArchiveAttachmentSearchResult {

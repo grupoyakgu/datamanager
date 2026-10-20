@@ -1,7 +1,7 @@
 'use client';
 
 import { useState } from 'react';
-import { HardDriveUpload, Trash2 } from 'lucide-react';
+import { Check, HardDriveUpload, Pencil, Trash2, X } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -10,7 +10,7 @@ import { api } from '@/lib/api-client';
 import { useT } from '@/lib/i18n/context';
 import { useInvalidateSummaries } from '@/hooks/use-api';
 import { DEFAULT_SETTINGS, type AppSettings, type CompletenessWeights } from '@/lib/settings';
-import { useSettings, useInvalidateAdmin } from './use-admin';
+import { useSettings, useInvalidateAdmin, useSummaryFolderRules } from './use-admin';
 
 const WEIGHT_KEYS = Object.keys(DEFAULT_SETTINGS.completeness_weights) as (keyof CompletenessWeights)[];
 
@@ -34,6 +34,7 @@ function SummariesForm({ settings }: { settings: AppSettings }) {
   const t = useT();
   const invalidateAdmin = useInvalidateAdmin();
   const invalidateSummaries = useInvalidateSummaries();
+  const { data: folderRules } = useSummaryFolderRules();
   const [weights, setWeights] = useState<CompletenessWeights>(settings.completeness_weights);
   const [fields, setFields] = useState<string[]>(settings.extraction_fields);
   const [status, setStatus] = useState<string | null>(null);
@@ -43,6 +44,10 @@ function SummariesForm({ settings }: { settings: AppSettings }) {
   const [clearing, setClearing] = useState(false);
   const [clearError, setClearError] = useState<string | null>(null);
   const [clearResult, setClearResult] = useState<string | null>(null);
+  const [editingRuleId, setEditingRuleId] = useState<string | null>(null);
+  const [editRuleName, setEditRuleName] = useState('');
+  const [savingRuleName, setSavingRuleName] = useState(false);
+  const [ruleError, setRuleError] = useState<string | null>(null);
 
   const total = WEIGHT_KEYS.reduce((sum, k) => sum + (Number(weights[k]) || 0), 0);
 
@@ -76,15 +81,45 @@ function SummariesForm({ settings }: { settings: AppSettings }) {
     setClearError(null);
     setClearResult(null);
     try {
-      const result = await api.post<{ deleted: number; filesDeleted: number; tagsDeleted: number }>('/api/admin/summaries/clear');
+      const result = await api.post<{ deleted: number; filesDeleted: number; tagsDeleted: number; rulesCleared: number }>(
+        '/api/admin/summaries/clear'
+      );
       setClearResult(
-        `${result.deleted} ${t('admin.summariesClearDeleted')}, ${result.filesDeleted} ${t('admin.archiveClearFilesDeleted')}, ${result.tagsDeleted} ${t('admin.archiveClearTagsDeleted')}`
+        `${result.deleted} ${t('admin.summariesClearDeleted')}, ${result.filesDeleted} ${t('admin.archiveClearFilesDeleted')}, ${result.tagsDeleted} ${t('admin.archiveClearTagsDeleted')}, ${result.rulesCleared} ${t('admin.archiveClearRulesCleared')}`
       );
       invalidateSummaries();
+      invalidateAdmin('summary-folder-rules');
     } catch (err) {
       setClearError(err instanceof Error ? err.message : t('common.error'));
     } finally {
       setClearing(false);
+    }
+  };
+
+  const saveRuleName = async (id: string) => {
+    const name = editRuleName.trim();
+    if (!name) return;
+    setRuleError(null);
+    setSavingRuleName(true);
+    try {
+      await api.patch(`/api/admin/summary-folder-rules/${id}`, { driveFolderName: name });
+      invalidateAdmin('summary-folder-rules');
+      invalidateSummaries();
+      setEditingRuleId(null);
+    } catch (err) {
+      setRuleError(err instanceof Error ? err.message : t('common.error'));
+    } finally {
+      setSavingRuleName(false);
+    }
+  };
+
+  const deleteRule = async (id: string) => {
+    setRuleError(null);
+    try {
+      await api.delete(`/api/admin/summary-folder-rules/${id}`);
+      invalidateAdmin('summary-folder-rules');
+    } catch (err) {
+      setRuleError(err instanceof Error ? err.message : t('common.error'));
     }
   };
 
@@ -165,6 +200,51 @@ function SummariesForm({ settings }: { settings: AppSettings }) {
               {exportResult.sampleError && !exportResult.reauthRequired && <p className="text-destructive">{exportResult.sampleError}</p>}
             </div>
           )}
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader>
+          <CardTitle>{t('admin.summaryFolderRules')}</CardTitle>
+          <p className="text-sm text-muted-foreground">{t('admin.summaryFolderRulesHint')}</p>
+        </CardHeader>
+        <CardContent className="space-y-2 max-w-2xl">
+          {ruleError && <p className="text-sm text-destructive">{ruleError}</p>}
+          {(folderRules ?? []).length === 0 && <p className="text-sm text-muted-foreground">{t('admin.summaryFolderRulesEmpty')}</p>}
+          {folderRules?.map((rule) => (
+            <div key={rule.id} className="flex items-center gap-2 rounded-md border bg-card px-3 py-2 text-sm">
+              <span className="font-medium truncate">{rule.pattern}</span>
+              <span className="text-muted-foreground">→</span>
+              {editingRuleId === rule.id ? (
+                <>
+                  <Input value={editRuleName} onChange={(e) => setEditRuleName(e.target.value)} className="h-8 max-w-[14rem]" autoFocus />
+                  <Button size="sm" variant="ghost" onClick={() => saveRuleName(rule.id)} disabled={savingRuleName || !editRuleName.trim()}>
+                    <Check size={16} />
+                  </Button>
+                  <Button size="sm" variant="ghost" onClick={() => setEditingRuleId(null)}>
+                    <X size={16} />
+                  </Button>
+                </>
+              ) : (
+                <>
+                  <span className="truncate">{rule.drive_folder_name}</span>
+                  <Button
+                    size="sm"
+                    variant="ghost"
+                    onClick={() => {
+                      setEditingRuleId(rule.id);
+                      setEditRuleName(rule.drive_folder_name);
+                    }}
+                  >
+                    <Pencil size={16} />
+                  </Button>
+                  <Button size="sm" variant="ghost" className="ml-auto text-destructive" onClick={() => deleteRule(rule.id)}>
+                    <Trash2 size={16} />
+                  </Button>
+                </>
+              )}
+            </div>
+          ))}
         </CardContent>
       </Card>
 
