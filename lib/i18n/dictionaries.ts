@@ -140,6 +140,8 @@ export const en = {
     attachments: 'Attachments',
     syncNow: 'Sync now',
     backToSummaries: 'Back to Meeting Summaries',
+    tempFolderWarning: 'This was sent from a shared email provider (gmail.com), so it\'s been filed in a temporary "Temp" folder instead of a named one. Move it to the right folder below.',
+    tempFolderBadge: 'Needs a folder',
     completenessColumn: 'Completeness',
   },
   missingFields: {
@@ -182,6 +184,8 @@ export const en = {
     noTaggedFiles: 'No files with the selected tags.',
     notYetSynced: 'Not yet synced',
     backToDrive: 'Back to Grupo Yakgu Drive',
+    moveToFolder: 'Move to folder',
+    selectFolder: 'Choose a folder',
   },
   tags: {
     title: 'Tags',
@@ -221,6 +225,9 @@ export const en = {
     noComments: 'No comments yet.',
     addCommentPlaceholder: 'Add a comment...',
     addComment: 'Add comment',
+    tempFolderWarning: 'This was sent from a shared email provider (gmail.com), so it\'s been filed in a temporary "Temp" folder instead of a named one. Move it to the right folder below.',
+    tempFolderBadge: 'Needs a folder',
+    driveFolder: 'Drive folder',
   },
   actionItems: {
     title: 'Action Items',
@@ -483,6 +490,8 @@ export const es: DeepStringRecord = {
     attachments: 'Adjuntos',
     syncNow: 'Sincronizar ahora',
     backToSummaries: 'Volver a Resúmenes de reuniones',
+    tempFolderWarning: 'Esto se envió desde un proveedor de correo compartido (gmail.com), así que se archivó en una carpeta temporal "Temp" en lugar de una con nombre. Muévelo a la carpeta correcta abajo.',
+    tempFolderBadge: 'Necesita carpeta',
     completenessColumn: 'Completitud',
   },
   missingFields: {
@@ -525,6 +534,8 @@ export const es: DeepStringRecord = {
     noTaggedFiles: 'No hay archivos con las etiquetas seleccionadas.',
     notYetSynced: 'Aún no sincronizado',
     backToDrive: 'Volver a Drive de Grupo Yakgu',
+    moveToFolder: 'Mover a carpeta',
+    selectFolder: 'Elige una carpeta',
   },
   tags: {
     title: 'Etiquetas',
@@ -564,6 +575,9 @@ export const es: DeepStringRecord = {
     noComments: 'Aún no hay comentarios.',
     addCommentPlaceholder: 'Añade un comentario...',
     addComment: 'Añadir comentario',
+    tempFolderWarning: 'Esto se envió desde un proveedor de correo compartido (gmail.com), así que se archivó en una carpeta temporal "Temp" en lugar de una con nombre. Muévelo a la carpeta correcta abajo.',
+    tempFolderBadge: 'Necesita carpeta',
+    driveFolder: 'Carpeta de Drive',
   },
   actionItems: {
     title: 'Elementos de acción',

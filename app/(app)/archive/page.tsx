@@ -10,7 +10,7 @@ import { useArchiveItems, useInvalidateArchive } from '@/hooks/use-archive';
 import { api } from '@/lib/api-client';
 import { useT } from '@/lib/i18n/context';
 import { cn } from '@/lib/utils';
-import type { ArchiveSyncResult } from '@/lib/archive/sync';
+import type { ArchiveSyncResult, SummarySyncResult } from '@/lib/mailbox-sync';
 
 export default function ArchivePage() {
   const t = useT();
@@ -31,13 +31,13 @@ export default function ArchivePage() {
     setSyncing(true);
     setSyncMessage(null);
     try {
-      const result = await api.post<ArchiveSyncResult>('/api/archive/sync');
+      const result = await api.post<{ archive: ArchiveSyncResult; summaries: SummarySyncResult }>('/api/archive/sync');
       setSyncMessage(
-        result.error
-          ? result.error
-          : !result.connected
+        result.archive.error
+          ? result.archive.error
+          : !result.archive.connected
             ? t('archive.mailboxNotConnected')
-            : `${result.created} ${t('admin.created')}, ${result.skipped} ${t('admin.skipped')}, ${result.failed} ${t('admin.failed')}`
+            : `${result.archive.created} ${t('nav.archive')}, ${result.summaries.created} ${t('nav.summaries')}, ${result.archive.skipped + result.summaries.skipped} ${t('admin.skipped')}, ${result.archive.failed + result.summaries.failed} ${t('admin.failed')}`
       );
       invalidate();
     } catch (err) {

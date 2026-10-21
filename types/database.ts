@@ -175,6 +175,7 @@ export interface ArchiveItemView {
   forwarded_by_email: string | null;
   email_received_at: string | null;
   drive_sync_error: string | null;
+  drive_folder_name: string | null;
   attachments: ArchiveAttachmentView[];
   tags: { id: string; name: string }[];
   comments: ArchiveCommentView[];

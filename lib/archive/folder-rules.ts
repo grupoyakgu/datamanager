@@ -1,6 +1,7 @@
 import { getSupabaseAdmin } from '@/lib/supabase';
 import { getSettings } from '@/lib/settings';
 import { ensureFolder, ensureDomainReaderAccess } from '@/lib/google/drive';
+import { isGenericEmailDomain, TEMP_FOLDER_NAME } from '@/lib/email-domains';
 import type { ArchiveFolderRule } from '@/types/database';
 
 export async function listArchiveFolderRules(): Promise<ArchiveFolderRule[]> {
@@ -62,23 +63,35 @@ export async function resolveArchiveFolderId(
 
   if (email) {
     const rules = await listArchiveFolderRules();
-    const matched =
-      rules.find((r) => r.pattern_type === 'email' && r.pattern === email) ??
-      (senderDomain ? rules.find((r) => r.pattern_type === 'domain' && r.pattern === senderDomain) : undefined);
+    const emailMatch = rules.find((r) => r.pattern_type === 'email' && r.pattern === email);
 
-    if (matched) {
-      folderId = matched.drive_folder_id;
-      folderName = matched.drive_folder_name;
+    if (emailMatch) {
+      folderId = emailMatch.drive_folder_id;
+      folderName = emailMatch.drive_folder_name;
+    } else if (isGenericEmailDomain(senderDomain)) {
+      // A free-provider domain (gmail.com, ...) says nothing about who the
+      // sender actually is, so it never gets its own shared folder — route
+      // to a catch-all "Temp" folder until someone moves this item to the
+      // right place (see app/api/archive/[id]/move-folder), which also
+      // remembers that exact sender's address for next time.
+      folderId = await ensureFolder(mailboxUserId, archiveRoot, TEMP_FOLDER_NAME);
+      folderName = TEMP_FOLDER_NAME;
     } else {
-      const pattern = senderDomain ?? email;
-      const patternType: 'email' | 'domain' = senderDomain ? 'domain' : 'email';
-      folderId = await ensureFolder(mailboxUserId, archiveRoot, pattern);
-      folderName = pattern;
-      const { error } = await supabaseAdmin
-        .from('archive_folder_rules')
-        .insert({ pattern, pattern_type: patternType, drive_folder_id: folderId, drive_folder_name: pattern });
-      if (error && error.code !== '23505' && error.code !== '42P01') {
-        console.error('Failed to persist auto-created archive folder rule', pattern, error);
+      const domainMatch = senderDomain ? rules.find((r) => r.pattern_type === 'domain' && r.pattern === senderDomain) : undefined;
+      if (domainMatch) {
+        folderId = domainMatch.drive_folder_id;
+        folderName = domainMatch.drive_folder_name;
+      } else {
+        const pattern = senderDomain ?? email;
+        const patternType: 'email' | 'domain' = senderDomain ? 'domain' : 'email';
+        folderId = await ensureFolder(mailboxUserId, archiveRoot, pattern);
+        folderName = pattern;
+        const { error } = await supabaseAdmin
+          .from('archive_folder_rules')
+          .insert({ pattern, pattern_type: patternType, drive_folder_id: folderId, drive_folder_name: pattern });
+        if (error && error.code !== '23505' && error.code !== '42P01') {
+          console.error('Failed to persist auto-created archive folder rule', pattern, error);
+        }
       }
     }
   }

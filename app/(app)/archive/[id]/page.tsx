@@ -12,7 +12,8 @@ import { Textarea } from '@/components/ui/textarea';
 import { LinkifiedText } from '@/components/summaries/linkified-text';
 import { formatDate } from '@/components/summaries/summary-card';
 import { EmptyState } from '@/components/layout/page-header';
-import { useArchiveItem, useInvalidateArchive } from '@/hooks/use-archive';
+import { MoveToFolder } from '@/components/shared/move-to-folder';
+import { useArchiveItem, useArchiveFolderOptions, useMoveArchiveItemFolder, useInvalidateArchive } from '@/hooks/use-archive';
 import { useTags } from '@/hooks/use-api';
 import { useUser } from '@/hooks/use-user';
 import { api } from '@/lib/api-client';
@@ -27,6 +28,8 @@ export default function ArchiveDetailPage({ params }: { params: Promise<{ id: st
   const { user } = useUser();
   const { data: item, isLoading, error } = useArchiveItem(id);
   const { data: tags } = useTags();
+  const { data: folderOptions } = useArchiveFolderOptions();
+  const moveFolder = useMoveArchiveItemFolder();
   const invalidate = useInvalidateArchive();
   const [deleting, setDeleting] = useState(false);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
@@ -160,6 +163,12 @@ export default function ArchiveDetailPage({ params }: { params: Promise<{ id: st
           )}
         </div>
 
+        {item.drive_folder_name === 'Temp' && (
+          <div className="flex items-start gap-2 rounded-md border border-amber-300 bg-amber-50 dark:bg-amber-950/30 p-3 text-sm text-amber-800 dark:text-amber-200">
+            <AlertTriangle size={16} className="mt-0.5 shrink-0" />
+            <span>{t('archive.tempFolderWarning')}</span>
+          </div>
+        )}
         {item.drive_sync_error && (
           <div className="flex items-start gap-2 rounded-md border border-red-300 bg-red-50 dark:bg-red-950/30 p-3 text-sm text-red-800 dark:text-red-200">
             <AlertTriangle size={16} className="mt-0.5 shrink-0" />
@@ -254,6 +263,19 @@ export default function ArchiveDetailPage({ params }: { params: Promise<{ id: st
                   })}
                   {!editingTags && item.tags.length === 0 && <span className="text-xs text-muted-foreground">{t('common.none')}</span>}
                 </div>
+              </div>
+
+              <div className="pt-2 border-t border-border space-y-1.5">
+                <div className="flex items-center justify-between gap-3">
+                  <span className="text-muted-foreground">{t('archive.driveFolder')}</span>
+                  <span className="text-right truncate">{item.drive_folder_name ?? '—'}</span>
+                </div>
+                <MoveToFolder
+                  currentFolderName={item.drive_folder_name}
+                  options={folderOptions ?? []}
+                  busy={moveFolder.isPending}
+                  onMove={(folderName) => moveFolder.mutate({ id: item.id, folderName })}
+                />
               </div>
 
               {item.attachments.length > 0 && (

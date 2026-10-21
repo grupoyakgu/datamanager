@@ -16,7 +16,16 @@ import { SendEmailDialog } from '@/components/summaries/send-email-dialog';
 import { LinkifiedText } from '@/components/summaries/linkified-text';
 import { formatDate } from '@/components/summaries/summary-card';
 import { EmptyState } from '@/components/layout/page-header';
-import { useSummary, useTags, useToggleFavorite, useInvalidateSummaries, useUpdateActionItemStatus } from '@/hooks/use-api';
+import {
+  useSummary,
+  useTags,
+  useToggleFavorite,
+  useInvalidateSummaries,
+  useUpdateActionItemStatus,
+  useSummaryFolderOptions,
+  useMoveSummaryFolder,
+} from '@/hooks/use-api';
+import { MoveToFolder } from '@/components/shared/move-to-folder';
 import { useUser } from '@/hooks/use-user';
 import { api } from '@/lib/api-client';
 import { useT } from '@/lib/i18n/context';
@@ -70,6 +79,8 @@ function SummaryDetailContent({ params }: { params: Promise<{ id: string }> }) {
   const { user } = useUser();
   const { data: summary, isLoading, error } = useSummary(id);
   const { data: tags } = useTags();
+  const { data: folderOptions } = useSummaryFolderOptions();
+  const moveFolder = useMoveSummaryFolder();
   const toggleFavorite = useToggleFavorite();
   const invalidate = useInvalidateSummaries();
   const [showEmail, setShowEmail] = useState(false);
@@ -245,6 +256,12 @@ function SummaryDetailContent({ params }: { params: Promise<{ id: string }> }) {
           </Badge>
         )}
         {summary.processing_status === 'pending' && <Badge variant="warning">{t('summaries.pending')}</Badge>}
+        {summary.drive_folder_name === 'Temp' && (
+          <div className="flex items-start gap-2 rounded-md border border-amber-300 bg-amber-50 dark:bg-amber-950/30 p-3 text-sm text-amber-800 dark:text-amber-200">
+            <AlertTriangle size={16} className="mt-0.5 shrink-0" />
+            <span>{t('summaries.tempFolderWarning')}</span>
+          </div>
+        )}
         {summary.ai_extraction_error && (
           <div className="flex items-start gap-2 rounded-md border border-red-300 bg-red-50 dark:bg-red-950/30 p-3 text-sm text-red-800 dark:text-red-200">
             <AlertTriangle size={16} className="mt-0.5 shrink-0" />
@@ -457,8 +474,14 @@ function SummaryDetailContent({ params }: { params: Promise<{ id: string }> }) {
                 </div>
               )}
               {summary.drive_sync_error && <p className="text-xs text-destructive">{summary.drive_sync_error}</p>}
-              <div className="pt-2 border-t border-border">
+              <div className="pt-2 border-t border-border space-y-1.5">
                 <Row label={t('summaries.driveFolder')} value={summary.drive_folder_name ?? t('summaries.noDriveFolder')} />
+                <MoveToFolder
+                  currentFolderName={summary.drive_folder_name}
+                  options={folderOptions ?? []}
+                  busy={moveFolder.isPending}
+                  onMove={(folderName) => moveFolder.mutate({ id: summary.id, folderName })}
+                />
               </div>
               {summary.attachments.length > 0 && (
                 <div className="pt-2 border-t border-border space-y-1">

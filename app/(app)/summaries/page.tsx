@@ -2,7 +2,7 @@
 
 import { Suspense, useEffect, useMemo, useRef, useState } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
-import { ArrowLeft, RefreshCw, Sparkles, Star } from 'lucide-react';
+import { AlertTriangle, ArrowLeft, RefreshCw, Sparkles, Star } from 'lucide-react';
 import { PageHeader, EmptyState } from '@/components/layout/page-header';
 import { SearchBar } from '@/components/summaries/search-bar';
 import { formatDate } from '@/components/summaries/summary-card';
@@ -295,7 +295,19 @@ function SummariesContent() {
                   <TD className="text-muted-foreground truncate max-w-[10rem]">
                     {summary.tags.map((tag) => tag.name).join(', ') || '—'}
                   </TD>
-                  <TD className="text-muted-foreground whitespace-nowrap">{summary.drive_folder_name ?? '—'}</TD>
+                  <TD className="text-muted-foreground whitespace-nowrap">
+                    {summary.drive_folder_name === 'Temp' ? (
+                      <span
+                        className="inline-flex items-center gap-1 rounded-full bg-amber-100 dark:bg-amber-950/50 text-amber-800 dark:text-amber-300 px-2 py-0.5 text-[11px] font-medium"
+                        title={t('summaries.tempFolderWarning')}
+                      >
+                        <AlertTriangle size={12} />
+                        {t('summaries.tempFolderBadge')}
+                      </span>
+                    ) : (
+                      (summary.drive_folder_name ?? '—')
+                    )}
+                  </TD>
                   <TD className="text-muted-foreground whitespace-nowrap">
                     {summary.action_item_rows.length > 0
                       ? `${summary.action_item_rows.filter((r) => r.status === 'closed').length}/${summary.action_item_rows.length}`

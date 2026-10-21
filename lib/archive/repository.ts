@@ -5,7 +5,7 @@ import type { ArchiveItemView, ArchiveAttachmentSearchResult, ArchiveTagOption }
 export const ARCHIVE_SELECT = `
   id, title, subject, body_text, is_forward,
   original_sender_name, original_sender_email, forwarded_by_name, forwarded_by_email,
-  email_received_at, drive_sync_error, created_at,
+  email_received_at, drive_sync_error, drive_folder_name, created_at,
   archive_attachments ( id, filename, mime_type, drive_file_id ),
   archive_item_tags ( tags ( id, name ) ),
   archive_comments ( id, body, created_at, author:users ( id, name, email ) )
@@ -23,6 +23,7 @@ interface RawArchiveItem {
   forwarded_by_email: string | null;
   email_received_at: string | null;
   drive_sync_error: string | null;
+  drive_folder_name: string | null;
   created_at: string;
   archive_attachments: { id: string; filename: string; mime_type: string; drive_file_id: string | null }[] | null;
   archive_item_tags: { tags: { id: string; name: string } | { id: string; name: string }[] | null }[] | null;
@@ -54,6 +55,7 @@ export function toArchiveItemView(raw: unknown): ArchiveItemView {
     forwarded_by_email: row.forwarded_by_email,
     email_received_at: row.email_received_at,
     drive_sync_error: row.drive_sync_error,
+    drive_folder_name: row.drive_folder_name,
     created_at: row.created_at,
     attachments: (row.archive_attachments ?? []).map((a) => ({
       id: a.id,

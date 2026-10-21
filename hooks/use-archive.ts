@@ -1,6 +1,6 @@
 'use client';
 
-import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { api } from '@/lib/api-client';
 import { useUser } from './use-user';
 import type { ArchiveItemView, ArchiveAttachmentSearchResult, ArchiveTagOption } from '@/types/database';
@@ -47,6 +47,30 @@ export function useArchiveTags() {
   });
 }
 
+/** Distinct Drive folders any signed-in user can move an archived item into. */
+export function useArchiveFolderOptions() {
+  const { user } = useUser();
+  return useQuery({
+    queryKey: ['archive-folder-options'],
+    queryFn: () => api.get<{ id: string; name: string }[]>('/api/archive/folder-options'),
+    enabled: !!user,
+  });
+}
+
+export function useMoveArchiveItemFolder() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, folderName }: { id: string; folderName: string }) =>
+      api.post<ArchiveItemView>(`/api/archive/${id}/move-folder`, { folderName }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['archive'] });
+      queryClient.invalidateQueries({ queryKey: ['archive-item'] });
+      queryClient.invalidateQueries({ queryKey: ['archive-folder-options'] });
+      queryClient.invalidateQueries({ queryKey: ['drive'] });
+    },
+  });
+}
+
 export function useInvalidateArchive() {
   const queryClient = useQueryClient();
   return () => {
@@ -54,5 +78,6 @@ export function useInvalidateArchive() {
     queryClient.invalidateQueries({ queryKey: ['archive-item'] });
     queryClient.invalidateQueries({ queryKey: ['archive-attachments'] });
     queryClient.invalidateQueries({ queryKey: ['archive-tags'] });
+    queryClient.invalidateQueries({ queryKey: ['archive-folder-options'] });
   };
 }

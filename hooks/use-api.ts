@@ -24,6 +24,30 @@ export function useDriveRootFolders() {
   });
 }
 
+/** Distinct Drive folders any signed-in user can move a summary into. */
+export function useSummaryFolderOptions() {
+  const { user } = useUser();
+  return useQuery({
+    queryKey: ['summary-folder-options'],
+    queryFn: () => api.get<{ id: string; name: string }[]>('/api/summaries/folder-options'),
+    enabled: !!user,
+  });
+}
+
+export function useMoveSummaryFolder() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, folderName }: { id: string; folderName: string }) =>
+      api.post<SummaryView>(`/api/summaries/${id}/move-folder`, { folderName }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['summaries'] });
+      queryClient.invalidateQueries({ queryKey: ['summary'] });
+      queryClient.invalidateQueries({ queryKey: ['summary-folder-options'] });
+      queryClient.invalidateQueries({ queryKey: ['drive-root-folders'] });
+    },
+  });
+}
+
 export function useTags(includeInactive = false) {
   const { user } = useUser();
   return useQuery({
@@ -103,6 +127,7 @@ export function useInvalidateSummaries() {
     queryClient.invalidateQueries({ queryKey: ['folders'] });
     queryClient.invalidateQueries({ queryKey: ['people'] });
     queryClient.invalidateQueries({ queryKey: ['action-items'] });
+    queryClient.invalidateQueries({ queryKey: ['summary-folder-options'] });
   };
 }
 
