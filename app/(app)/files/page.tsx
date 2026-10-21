@@ -2,12 +2,14 @@
 
 import { useMemo, useState } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { Folder, FileText, ExternalLink, ChevronRight, Search, RefreshCw, X } from 'lucide-react';
+import { Folder, FileText, ExternalLink, ChevronRight, RefreshCw, X } from 'lucide-react';
 import { PageHeader, EmptyState } from '@/components/layout/page-header';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import { Label } from '@/components/ui/label';
+import { Badge } from '@/components/ui/badge';
 import { Table, THead, TBody, TR, TH, TD } from '@/components/ui/table';
+import { SearchBar } from '@/components/summaries/search-bar';
 import { api, ApiError } from '@/lib/api-client';
 import { useUser } from '@/hooks/use-user';
 import { useArchiveAttachmentsByTags, useArchiveTags, useInvalidateArchive } from '@/hooks/use-archive';
@@ -15,6 +17,8 @@ import { useT } from '@/lib/i18n/context';
 import { cn } from '@/lib/utils';
 import type { DriveFileWithSource } from '@/app/api/drive/files/route';
 import type { ArchiveSyncResult, SummarySyncResult } from '@/lib/mailbox-sync';
+import type { ArchiveAttachmentSearchResult } from '@/types/database';
+import type { ParsedArchiveQuery } from '@/lib/ai/archive-query-parser';
 
 interface DriveResponse {
   folder: DriveFileWithSource | null;
@@ -63,15 +67,19 @@ export default function FilesPage() {
   // that root's subtree — a folderId outside it is never served, and the
   // breadcrumb it returns never includes anything above the root either.
   const [folderId, setFolderId] = useState<string | null>(null);
-  const [search, setSearch] = useState('');
-  const [activeSearch, setActiveSearch] = useState('');
   const [selectedTagIds, setSelectedTagIds] = useState<string[]>([]);
   const [tagQuery, setTagQuery] = useState('');
   const [syncing, setSyncing] = useState(false);
   const [syncMessage, setSyncMessage] = useState<string | null>(null);
+  const [askResult, setAskResult] = useState<{ results: ArchiveAttachmentSearchResult[]; interpreted: ParsedArchiveQuery } | null>(null);
+  const [asking, setAsking] = useState(false);
+  const [askError, setAskError] = useState<string | null>(null);
 
   const { data: archiveTags } = useArchiveTags();
   const { data: tagResults, isLoading: tagResultsLoading } = useArchiveAttachmentsByTags(selectedTagIds);
+  const showResults = selectedTagIds.length > 0 || !!askResult;
+  const activeResults = selectedTagIds.length > 0 ? tagResults : askResult?.results;
+  const resultsLoading = selectedTagIds.length > 0 ? tagResultsLoading : asking;
 
   const selectedTags = useMemo(() => (archiveTags ?? []).filter((t) => selectedTagIds.includes(t.id)), [archiveTags, selectedTagIds]);
   const mostRecentUnselected = (archiveTags ?? []).find((t) => !selectedTagIds.includes(t.id));
@@ -82,14 +90,13 @@ export default function FilesPage() {
   }, [archiveTags, selectedTagIds, tagQuery]);
 
   const { data, isLoading, error } = useQuery({
-    queryKey: ['drive', folderId ?? 'root', activeSearch],
+    queryKey: ['drive', folderId ?? 'root'],
     queryFn: () => {
       const params = new URLSearchParams();
-      if (activeSearch) params.set('q', activeSearch);
-      else if (folderId) params.set('folderId', folderId);
+      if (folderId) params.set('folderId', folderId);
       return api.get<DriveResponse>(`/api/drive/files?${params}`);
     },
-    enabled: !!user && selectedTagIds.length === 0,
+    enabled: !!user && !showResults,
   });
 
   const notConnected = error instanceof ApiError && error.code === 'drive_not_connected';
@@ -100,8 +107,25 @@ export default function FilesPage() {
   const addTag = (tagId: string) => {
     setSelectedTagIds((prev) => (prev.includes(tagId) ? prev : [...prev, tagId]));
     setTagQuery('');
+    setAskResult(null);
   };
   const removeTag = (tagId: string) => setSelectedTagIds((prev) => prev.filter((id) => id !== tagId));
+
+  const ask = async (question: string) => {
+    setAsking(true);
+    setAskError(null);
+    try {
+      const result = await api.post<{ results: ArchiveAttachmentSearchResult[]; interpreted: ParsedArchiveQuery }>('/api/archive/ask', {
+        question,
+      });
+      setAskResult(result);
+      setSelectedTagIds([]);
+    } catch (err) {
+      setAskError(err instanceof Error ? err.message : t('common.error'));
+    } finally {
+      setAsking(false);
+    }
+  };
 
   const syncNow = async () => {
     setSyncing(true);
@@ -194,10 +218,36 @@ export default function FilesPage() {
         </div>
       )}
 
-      {selectedTagIds.length > 0 ? (
-        tagResultsLoading ? (
+      <div className="mb-4">
+        <SearchBar busy={asking} onSearch={ask} showAskButton={false} placeholder={t('files.searchPlaceholder')} />
+        {askResult && (
+          <div className="flex items-center gap-3 flex-wrap text-sm mt-2">
+            <Button variant="ghost" size="sm" onClick={() => setAskResult(null)}>
+              {t('common.clearFilters')}
+            </Button>
+            <span className="text-muted-foreground flex flex-wrap items-center gap-1">
+              {askResult.interpreted.tags.map((tag) => (
+                <Badge key={tag} variant="outline">
+                  🏷 {tag}
+                </Badge>
+              ))}
+              {askResult.interpreted.senderQuery && <Badge variant="outline">👤 {askResult.interpreted.senderQuery}</Badge>}
+              {askResult.interpreted.textQuery && <Badge variant="secondary">{askResult.interpreted.textQuery}</Badge>}
+              {askResult.interpreted.dateFrom && (
+                <Badge variant="outline">
+                  {askResult.interpreted.dateFrom} → {askResult.interpreted.dateTo ?? '…'}
+                </Badge>
+              )}
+            </span>
+          </div>
+        )}
+        {askError && <p className="text-sm text-destructive mt-2">{askError}</p>}
+      </div>
+
+      {showResults ? (
+        resultsLoading ? (
           <p className="text-muted-foreground">{t('common.loading')}</p>
-        ) : !tagResults || tagResults.length === 0 ? (
+        ) : !activeResults || activeResults.length === 0 ? (
           <EmptyState>{t('files.noTaggedFiles')}</EmptyState>
         ) : (
           <Table>
@@ -211,7 +261,7 @@ export default function FilesPage() {
               </TR>
             </THead>
             <TBody>
-              {tagResults.map((attachment) => (
+              {activeResults.map((attachment) => (
                 <TR key={attachment.id}>
                   <TD>
                     <span className="inline-flex items-center gap-2">
@@ -242,46 +292,23 @@ export default function FilesPage() {
         )
       ) : (
         <>
-          <form
-            className="flex gap-2 mb-4"
-            onSubmit={(e) => {
-              e.preventDefault();
-              setActiveSearch(search.trim());
-            }}
-          >
-            <div className="relative flex-1">
-              <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" />
-              <Input value={search} onChange={(e) => setSearch(e.target.value)} placeholder={t('files.searchPlaceholder')} className="pl-9" />
-            </div>
-            <Button type="submit" variant="outline">
-              {t('common.search')}
-            </Button>
-            {activeSearch && (
-              <Button type="button" variant="ghost" onClick={() => { setSearch(''); setActiveSearch(''); }}>
-                {t('common.clearFilters')}
-              </Button>
-            )}
-          </form>
-
-          {!activeSearch && (
-            <nav className="flex items-center flex-wrap gap-1 text-sm mb-4">
-              {crumbs.map((c, i) => {
-                const isLast = i === crumbs.length - 1;
-                return (
-                  <span key={c.id ?? 'root'} className="flex items-center gap-1">
-                    {i > 0 && <ChevronRight size={14} className="text-muted-foreground" />}
-                    {isLast ? (
-                      <span className="font-medium">{c.name}</span>
-                    ) : (
-                      <button type="button" className="hover:underline text-muted-foreground" onClick={() => setFolderId(c.id)}>
-                        {c.name}
-                      </button>
-                    )}
-                  </span>
-                );
-              })}
-            </nav>
-          )}
+          <nav className="flex items-center flex-wrap gap-1 text-sm mb-4">
+            {crumbs.map((c, i) => {
+              const isLast = i === crumbs.length - 1;
+              return (
+                <span key={c.id ?? 'root'} className="flex items-center gap-1">
+                  {i > 0 && <ChevronRight size={14} className="text-muted-foreground" />}
+                  {isLast ? (
+                    <span className="font-medium">{c.name}</span>
+                  ) : (
+                    <button type="button" className="hover:underline text-muted-foreground" onClick={() => setFolderId(c.id)}>
+                      {c.name}
+                    </button>
+                  )}
+                </span>
+              );
+            })}
+          </nav>
 
           {notConnected ? (
             <EmptyState>{t('files.notConnected')}</EmptyState>
@@ -313,7 +340,7 @@ export default function FilesPage() {
                         <button
                           type="button"
                           className="inline-flex items-center gap-2 hover:underline text-left"
-                          onClick={() => { setActiveSearch(''); setSearch(''); setFolderId(file.id); }}
+                          onClick={() => setFolderId(file.id)}
                         >
                           <Folder size={16} className="text-amber-500" /> {file.name}
                         </button>

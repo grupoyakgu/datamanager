@@ -142,6 +142,72 @@ export async function listArchiveAttachmentsByTags(tagIds: string[]): Promise<Ar
   return results;
 }
 
+export interface ArchiveSearchFilters {
+  tagIds?: string[];
+  /** Matches against original/forwarded sender name or email. */
+  senderQuery?: string | null;
+  /** Matches against the item's title, subject or body. */
+  textQuery?: string | null;
+  dateFrom?: string | null;
+  dateTo?: string | null;
+}
+
+/** Attachments matching a combination of tag, sender and free-text filters — used by the AI-powered "smart search". */
+export async function searchArchiveAttachments(filters: ArchiveSearchFilters): Promise<ArchiveAttachmentSearchResult[]> {
+  const supabaseAdmin = getSupabaseAdmin();
+
+  let itemIds: string[] | null = null;
+  if (filters.tagIds && filters.tagIds.length > 0) {
+    const { data: links } = await supabaseAdmin.from('archive_item_tags').select('archived_item_id').in('tag_id', filters.tagIds);
+    itemIds = Array.from(new Set((links ?? []).map((l) => l.archived_item_id as string)));
+    if (itemIds.length === 0) return [];
+  }
+
+  let builder = supabaseAdmin
+    .from('archived_items')
+    .select(
+      'id, original_sender_name, original_sender_email, drive_folder_name, archive_attachments ( id, filename, mime_type, drive_file_id ), archive_item_tags ( tags ( id, name ) )'
+    );
+  if (itemIds) builder = builder.in('id', itemIds);
+  if (filters.senderQuery?.trim()) {
+    const q = filters.senderQuery.trim().replace(/[%_]/g, '\\$&');
+    builder = builder.or(
+      `original_sender_name.ilike.%${q}%,original_sender_email.ilike.%${q}%,forwarded_by_name.ilike.%${q}%,forwarded_by_email.ilike.%${q}%`
+    );
+  }
+  if (filters.textQuery?.trim()) {
+    const q = filters.textQuery.trim().replace(/[%_]/g, '\\$&');
+    builder = builder.or(`title.ilike.%${q}%,subject.ilike.%${q}%,body_text.ilike.%${q}%`);
+  }
+  if (filters.dateFrom) builder = builder.gte('email_received_at', filters.dateFrom);
+  if (filters.dateTo) builder = builder.lte('email_received_at', `${filters.dateTo}T23:59:59`);
+
+  const { data, error } = await builder.order('email_received_at', { ascending: false, nullsFirst: false }).limit(100);
+  if (error) throw new Error(error.message);
+
+  const results: ArchiveAttachmentSearchResult[] = [];
+  for (const row of (data ?? []) as unknown as RawArchiveAttachmentSearchRow[]) {
+    const itemTags = (row.archive_item_tags ?? [])
+      .map((t) => (Array.isArray(t.tags) ? t.tags[0] ?? null : t.tags))
+      .filter((t): t is { id: string; name: string } => !!t)
+      .sort((a, b) => a.name.localeCompare(b.name));
+    const source = prettySenderName(row.original_sender_name, row.original_sender_email);
+    for (const attachment of row.archive_attachments ?? []) {
+      results.push({
+        id: attachment.id,
+        filename: attachment.filename,
+        mimeType: attachment.mime_type,
+        driveUrl: attachment.drive_file_id ? `https://drive.google.com/file/d/${attachment.drive_file_id}/view` : null,
+        itemId: row.id,
+        source,
+        folderName: row.drive_folder_name,
+        tags: itemTags,
+      });
+    }
+  }
+  return results;
+}
+
 /** Every tag actually used by at least one archived item, most-recently-used first. */
 export async function listArchiveTags(): Promise<ArchiveTagOption[]> {
   const supabaseAdmin = getSupabaseAdmin();
