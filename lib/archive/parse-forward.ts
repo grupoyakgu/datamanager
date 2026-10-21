@@ -109,16 +109,22 @@ If is_forward is false, return null for the other four fields.`;
   }
 }
 
-const INLINE_TAGS_PATTERN = /\btags\s*:\s*(.+)$/im;
+const INLINE_TAGS_PATTERN = /\btags\s*:\s*([^]*?)(?=\n[ \t]*\n|$)/i;
 
 /**
  * Parse a sender-declared "tags:tag_name1, tag_name2" line anywhere in an
- * email body into a list of tag names. Unlike the AI content-tag detector,
- * these are taken as-is and may create brand-new tags (see
- * findOrCreateTagsByName in lib/summaries/repository.ts).
+ * email body into a list of tag names — shared by both the Archive and
+ * Summaries modules. Captures up to the next blank line (or the end of the
+ * body, if there isn't one) rather than just the first physical line, so a
+ * long comma-separated list that an email client hard-wraps onto a second
+ * line is still read in full instead of silently truncated. Unlike the AI
+ * content-tag detector, these are taken as-is and may create brand-new
+ * tags (see findOrCreateTagsByName in lib/summaries/repository.ts).
  */
 export function parseInlineTags(bodyText: string): string[] {
   const match = bodyText.match(INLINE_TAGS_PATTERN);
   if (!match) return [];
-  return Array.from(new Set(match[1].split(',').map((t) => t.trim()).filter(Boolean)));
+  const raw = match[1].replace(/\s*\n\s*/g, ' ').trim();
+  if (!raw) return [];
+  return Array.from(new Set(raw.split(',').map((t) => t.trim()).filter(Boolean)));
 }
