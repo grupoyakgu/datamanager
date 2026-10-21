@@ -181,6 +181,7 @@ export const en = {
     uploadedBy: 'Uploaded by',
     noTaggedFiles: 'No files with the selected tags.',
     notYetSynced: 'Not yet synced',
+    backToDrive: 'Back to Grupo Yakgu Drive',
   },
   tags: {
     title: 'Tags',
@@ -523,6 +524,7 @@ export const es: DeepStringRecord = {
     uploadedBy: 'Subido por',
     noTaggedFiles: 'No hay archivos con las etiquetas seleccionadas.',
     notYetSynced: 'Aún no sincronizado',
+    backToDrive: 'Volver a Drive de Grupo Yakgu',
   },
   tags: {
     title: 'Etiquetas',

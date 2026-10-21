@@ -2,7 +2,7 @@
 
 import { useMemo, useState } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { Folder, FileText, ExternalLink, ChevronRight, RefreshCw, X } from 'lucide-react';
+import { ArrowLeft, Folder, FileText, ExternalLink, ChevronRight, RefreshCw, X } from 'lucide-react';
 import { PageHeader, EmptyState } from '@/components/layout/page-header';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
@@ -74,6 +74,13 @@ export default function FilesPage() {
   const [askResult, setAskResult] = useState<{ results: ArchiveAttachmentSearchResult[]; interpreted: ParsedArchiveQuery } | null>(null);
   const [asking, setAsking] = useState(false);
   const [askError, setAskError] = useState<string | null>(null);
+  const [searchNonce, setSearchNonce] = useState(0);
+
+  const clearAskResult = () => {
+    setAskResult(null);
+    setAskError(null);
+    setSearchNonce((n) => n + 1);
+  };
 
   const { data: archiveTags } = useArchiveTags();
   const { data: tagResults, isLoading: tagResultsLoading } = useArchiveAttachmentsByTags(selectedTagIds);
@@ -219,12 +226,18 @@ export default function FilesPage() {
       )}
 
       <div className="mb-4">
-        <SearchBar busy={asking} onSearch={ask} showAskButton={false} placeholder={t('files.searchPlaceholder')} />
+        {askResult && (
+          <button
+            type="button"
+            onClick={clearAskResult}
+            className="mb-2 inline-flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground"
+          >
+            <ArrowLeft size={16} /> {t('files.backToDrive')}
+          </button>
+        )}
+        <SearchBar key={searchNonce} busy={asking} onSearch={ask} showAskButton={false} placeholder={t('files.searchPlaceholder')} />
         {askResult && (
           <div className="flex items-center gap-3 flex-wrap text-sm mt-2">
-            <Button variant="ghost" size="sm" onClick={() => setAskResult(null)}>
-              {t('common.clearFilters')}
-            </Button>
             <span className="text-muted-foreground flex flex-wrap items-center gap-1">
               {askResult.interpreted.tags.map((tag) => (
                 <Badge key={tag} variant="outline">
