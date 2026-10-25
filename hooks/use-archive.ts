@@ -71,6 +71,22 @@ export function useMoveArchiveItemFolder() {
   });
 }
 
+/** Move a raw Drive file (shown on the Files page) to a different folder — whether or not it's linked to an archived item. */
+export function useMoveDriveFile() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({ fileId, folderName }: { fileId: string; folderName: string }) =>
+      api.post<{ id: string; name: string }>('/api/drive/files/move', { fileId, folderName }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['drive'] });
+      queryClient.invalidateQueries({ queryKey: ['archive'] });
+      queryClient.invalidateQueries({ queryKey: ['archive-item'] });
+      queryClient.invalidateQueries({ queryKey: ['archive-attachments'] });
+      queryClient.invalidateQueries({ queryKey: ['archive-folder-options'] });
+    },
+  });
+}
+
 export function useInvalidateArchive() {
   const queryClient = useQueryClient();
   return () => {

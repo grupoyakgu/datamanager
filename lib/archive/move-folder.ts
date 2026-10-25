@@ -65,3 +65,44 @@ export async function moveArchiveItemToFolder(archivedItemId: string, folderName
 
   return { id: folderId, name: trimmed };
 }
+
+/**
+ * Move a single Drive file to a different folder (existing or newly
+ * created) under the archive root. If the file is a known attachment of an
+ * archived item, delegates to moveArchiveItemToFolder so the item's
+ * drive_folder_name and sender rule stay consistent with its other
+ * attachments. Otherwise it's a plain Drive move with no DB record to
+ * update — e.g. a file an admin uploaded directly, outside the Archive
+ * pipeline. Used by the Files page to relocate anything shown there.
+ */
+export async function moveDriveFileToFolder(fileId: string, folderName: string): Promise<{ id: string; name: string }> {
+  const trimmed = folderName.trim();
+  if (!trimmed) throw new Error('folderName is required');
+
+  const supabaseAdmin = getSupabaseAdmin();
+  const { data: attachment } = await supabaseAdmin
+    .from('archive_attachments')
+    .select('archived_item_id')
+    .eq('drive_file_id', fileId)
+    .maybeSingle();
+  if (attachment) {
+    return moveArchiveItemToFolder(attachment.archived_item_id as string, trimmed);
+  }
+
+  const mailboxUser = await getArchiveMailboxUser();
+  if (!mailboxUser) throw new Error('The archive mailbox is not connected yet.');
+
+  const root = await getArchiveDriveRootId(mailboxUser.id);
+  const folderId = await ensureFolder(mailboxUser.id, root, trimmed);
+
+  try {
+    const domain = mailboxUser.email.split('@')[1];
+    if (domain) await ensureDomainReaderAccess(mailboxUser.id, folderId, domain);
+  } catch (shareError) {
+    console.error('Failed to grant domain access on archive folder', folderId, shareError);
+  }
+
+  await setDocParents(mailboxUser.id, fileId, [folderId]);
+
+  return { id: folderId, name: trimmed };
+}

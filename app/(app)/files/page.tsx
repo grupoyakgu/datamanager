@@ -10,9 +10,17 @@ import { Label } from '@/components/ui/label';
 import { Badge } from '@/components/ui/badge';
 import { Table, THead, TBody, TR, TH, TD } from '@/components/ui/table';
 import { SearchBar } from '@/components/summaries/search-bar';
+import { MoveToFolder } from '@/components/shared/move-to-folder';
 import { api, ApiError } from '@/lib/api-client';
 import { useUser } from '@/hooks/use-user';
-import { useArchiveAttachmentsByTags, useArchiveTags, useInvalidateArchive } from '@/hooks/use-archive';
+import {
+  useArchiveAttachmentsByTags,
+  useArchiveFolderOptions,
+  useArchiveTags,
+  useInvalidateArchive,
+  useMoveArchiveItemFolder,
+  useMoveDriveFile,
+} from '@/hooks/use-archive';
 import { useT } from '@/lib/i18n/context';
 import { cn } from '@/lib/utils';
 import type { DriveFileWithSource } from '@/app/api/drive/files/route';
@@ -83,6 +91,9 @@ export default function FilesPage() {
   };
 
   const { data: archiveTags } = useArchiveTags();
+  const { data: folderOptions } = useArchiveFolderOptions();
+  const moveArchiveItem = useMoveArchiveItemFolder();
+  const moveDriveFile = useMoveDriveFile();
   const { data: tagResults, isLoading: tagResultsLoading } = useArchiveAttachmentsByTags(selectedTagIds);
   const showResults = selectedTagIds.length > 0 || !!askResult;
   const activeResults = selectedTagIds.length > 0 ? tagResults : askResult?.results;
@@ -285,18 +296,26 @@ export default function FilesPage() {
                   <TD className="hidden lg:table-cell text-muted-foreground">{attachment.folderName ?? '—'}</TD>
                   <TD className="hidden sm:table-cell text-muted-foreground">{attachment.tags.map((tag) => tag.name).join(', ')}</TD>
                   <TD className="text-right">
-                    {attachment.driveUrl ? (
-                      <a
-                        href={attachment.driveUrl}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="inline-flex items-center gap-1 text-sm text-primary hover:underline"
-                      >
-                        {t('files.openInDrive')} <ExternalLink size={14} />
-                      </a>
-                    ) : (
-                      <span className="text-xs text-muted-foreground">{t('files.notYetSynced')}</span>
-                    )}
+                    <div className="flex flex-col items-end gap-1">
+                      {attachment.driveUrl ? (
+                        <a
+                          href={attachment.driveUrl}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="inline-flex items-center gap-1 text-sm text-primary hover:underline"
+                        >
+                          {t('files.openInDrive')} <ExternalLink size={14} />
+                        </a>
+                      ) : (
+                        <span className="text-xs text-muted-foreground">{t('files.notYetSynced')}</span>
+                      )}
+                      <MoveToFolder
+                        currentFolderName={attachment.folderName}
+                        options={folderOptions ?? []}
+                        busy={moveArchiveItem.isPending}
+                        onMove={(folderName) => moveArchiveItem.mutate({ id: attachment.itemId, folderName })}
+                      />
+                    </div>
                   </TD>
                 </TR>
               ))}
@@ -368,16 +387,30 @@ export default function FilesPage() {
                     <TD className="hidden lg:table-cell text-muted-foreground">{file.uploadedBy ?? '—'}</TD>
                     <TD className="hidden sm:table-cell text-muted-foreground">{new Date(file.modifiedTime).toLocaleDateString()}</TD>
                     <TD className="text-right">
-                      {file.webViewLink && (
-                        <a
-                          href={file.webViewLink}
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          className="inline-flex items-center gap-1 text-sm text-primary hover:underline"
-                        >
-                          {t('files.openInDrive')} <ExternalLink size={14} />
-                        </a>
-                      )}
+                      <div className="flex flex-col items-end gap-1">
+                        {file.webViewLink && (
+                          <a
+                            href={file.webViewLink}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="inline-flex items-center gap-1 text-sm text-primary hover:underline"
+                          >
+                            {t('files.openInDrive')} <ExternalLink size={14} />
+                          </a>
+                        )}
+                        {!file.isFolder && (
+                          <MoveToFolder
+                            currentFolderName={data?.folder?.name ?? data?.rootName ?? null}
+                            options={folderOptions ?? []}
+                            busy={file.archivedItemId ? moveArchiveItem.isPending : moveDriveFile.isPending}
+                            onMove={(folderName) =>
+                              file.archivedItemId
+                                ? moveArchiveItem.mutate({ id: file.archivedItemId, folderName })
+                                : moveDriveFile.mutate({ fileId: file.id, folderName })
+                            }
+                          />
+                        )}
+                      </div>
                     </TD>
                   </TR>
                 ))}

@@ -10,7 +10,7 @@ import { getSupabaseAdmin } from '@/lib/supabase';
 
 export const dynamic = 'force-dynamic';
 
-export type DriveFileWithSource = DriveFile & { source: string | null; uploadedBy: string | null };
+export type DriveFileWithSource = DriveFile & { source: string | null; uploadedBy: string | null; archivedItemId: string | null };
 
 /**
  * For each (non-folder) file, look up which archived item it came from —
@@ -31,7 +31,7 @@ export type DriveFileWithSource = DriveFile & { source: string | null; uploadedB
  */
 async function withSourceInfo(files: DriveFile[]): Promise<DriveFileWithSource[]> {
   const fileIds = files.filter((f) => !f.isFolder).map((f) => f.id);
-  if (fileIds.length === 0) return files.map((f) => ({ ...f, source: null, uploadedBy: null }));
+  if (fileIds.length === 0) return files.map((f) => ({ ...f, source: null, uploadedBy: null, archivedItemId: null }));
 
   const supabaseAdmin = getSupabaseAdmin();
   const { data: attachmentRows } = await supabaseAdmin
@@ -49,7 +49,10 @@ async function withSourceInfo(files: DriveFile[]): Promise<DriveFileWithSource[]
       : { data: [] };
   const itemById = new Map((itemRows ?? []).map((i) => [i.id as string, i]));
 
-  const metaByFileId = new Map<string, { name: string | null; source: string | null; uploadedBy: string | null }>();
+  const metaByFileId = new Map<
+    string,
+    { name: string | null; source: string | null; uploadedBy: string | null; archivedItemId: string | null }
+  >();
   for (const row of attachmentRows ?? []) {
     const item = itemById.get(row.archived_item_id as string);
     if (!item) continue;
@@ -63,12 +66,19 @@ async function withSourceInfo(files: DriveFile[]): Promise<DriveFileWithSource[]
       name: (row.filename as string | null) || null,
       source: prettySenderName(item.original_sender_name as string | null, item.original_sender_email as string | null),
       uploadedBy,
+      archivedItemId: row.archived_item_id as string,
     });
   }
 
   return files.map((f) => {
     const meta = metaByFileId.get(f.id);
-    return { ...f, name: meta?.name ?? f.name, source: meta?.source ?? null, uploadedBy: meta?.uploadedBy ?? null };
+    return {
+      ...f,
+      name: meta?.name ?? f.name,
+      source: meta?.source ?? null,
+      uploadedBy: meta?.uploadedBy ?? null,
+      archivedItemId: meta?.archivedItemId ?? null,
+    };
   });
 }
 
