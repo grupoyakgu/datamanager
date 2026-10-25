@@ -54,10 +54,6 @@ export async function ingestSummaryMessage(
     .insert({
       title: cleanTitle(subject),
       content,
-      // Full, untrimmed body — the forwarder's own preamble (and any
-      // "tags:a, b" line in it) lives only here, since `content` above may
-      // have dropped it. See processSummary's inline tag parsing.
-      original_body: message.bodyText,
       original_email_id: message.messageIdHeader,
       gmail_message_id: message.id,
       email_from: message.from,

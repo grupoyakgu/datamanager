@@ -16,7 +16,7 @@ export async function processSummary(summaryId: string, options: { applyFolderRu
   const supabaseAdmin = getSupabaseAdmin();
   const { data: summary, error } = await supabaseAdmin
     .from('meeting_summaries')
-    .select('id, title, content, original_body, email_received_at, meeting_date, folder_id')
+    .select('id, title, content, email_received_at, meeting_date, folder_id')
     .eq('id', summaryId)
     .single();
   if (error || !summary) throw new Error(error?.message ?? 'Summary not found');
@@ -39,12 +39,7 @@ export async function processSummary(summaryId: string, options: { applyFolderRu
     // Sender-declared "tags:a, b" line in the body (see parse-forward.ts) —
     // same free-form syntax the Archive module uses, can create brand-new
     // tags. Appended after the AI-detected ones so those keep priority.
-    // Parsed from the full, untrimmed body (original_body) rather than
-    // `content`, which may have had the forwarder's own preamble — where
-    // that line usually lives — stripped off; original_body is null for
-    // summaries ingested before that column existed, so content is still
-    // the fallback for those.
-    const inlineTagNames = parseInlineTags(summary.original_body || summary.content);
+    const inlineTagNames = parseInlineTags(summary.content);
     const inlineTagRows = inlineTagNames.length > 0 ? await findOrCreateTagsByName(inlineTagNames) : [];
     const tagRows = [...aiTagRows, ...inlineTagRows.filter((t) => !aiTagRows.some((a) => a.id === t.id))];
 
