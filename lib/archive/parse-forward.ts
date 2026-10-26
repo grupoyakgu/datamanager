@@ -109,16 +109,23 @@ If is_forward is false, return null for the other four fields.`;
   }
 }
 
-const INLINE_TAGS_PATTERN = /\btags\s*:\s*([^]*?)(?=\n[ \t]*\n|$)/i;
+const INLINE_TAGS_PATTERN =
+  /\btags\s*:\s*([^]*?)(?=\n[ \t]*\n|\n-{2,}\s*(?:forwarded message|mensaje reenviado|הודעה שהועברה)\s*-{2,}|$)/i;
 
 /**
  * Parse a sender-declared "tags:tag_name1, tag_name2" line anywhere in an
  * email body into a list of tag names — shared by both the Archive and
- * Summaries modules. Captures up to the next blank line (or the end of the
- * body, if there isn't one) rather than just the first physical line, so a
- * long comma-separated list that an email client hard-wraps onto a second
- * line is still read in full instead of silently truncated. Unlike the AI
- * content-tag detector, these are taken as-is and may create brand-new
+ * Summaries modules. Captures up to the next blank line, the start of
+ * Gmail's own forward marker (see FORWARD_MARKER above), or the end of the
+ * body — whichever comes first — rather than just the first physical line,
+ * so a long comma-separated list that an email client hard-wraps onto a
+ * second line is still read in full instead of silently truncated. The
+ * forward-marker bound matters because a forwarder's "tags:" line sometimes
+ * isn't followed by a blank line before "---------- Forwarded message
+ * ---------" (or the forwarded body's own paragraphs don't have one either)
+ * — without it, the capture ran past the marker into the quoted original
+ * message and comma-split its prose into dozens of bogus "tags". Unlike the
+ * AI content-tag detector, these are taken as-is and may create brand-new
  * tags (see findOrCreateTagsByName in lib/summaries/repository.ts).
  */
 export function parseInlineTags(bodyText: string): string[] {
