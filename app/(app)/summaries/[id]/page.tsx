@@ -26,6 +26,7 @@ import {
   useMoveSummaryFolder,
 } from '@/hooks/use-api';
 import { MoveToFolder } from '@/components/shared/move-to-folder';
+import { TagEditor } from '@/components/shared/tag-editor';
 import { useUser } from '@/hooks/use-user';
 import { api } from '@/lib/api-client';
 import { useT } from '@/lib/i18n/context';
@@ -86,6 +87,7 @@ function SummaryDetailContent({ params }: { params: Promise<{ id: string }> }) {
   const [showEmail, setShowEmail] = useState(false);
   const [reprocessing, setReprocessing] = useState(false);
   const [editingTags, setEditingTags] = useState(false);
+  const [addingTag, setAddingTag] = useState(false);
   const [editingDetails, setEditingDetails] = useState(false);
   const [detailsForm, setDetailsForm] = useState<DetailsForm | null>(null);
   const [savingDetails, setSavingDetails] = useState(false);
@@ -150,6 +152,15 @@ function SummaryDetailContent({ params }: { params: Promise<{ id: string }> }) {
     const current = summary.tags.map((tag) => tag.id);
     const next = current.includes(tagId) ? current.filter((x) => x !== tagId) : [...current, tagId];
     update({ tagIds: next });
+  };
+
+  const addNewTag = async (name: string) => {
+    setAddingTag(true);
+    try {
+      await update({ tagIds: summary.tags.map((tag) => tag.id), newTagNames: [name] });
+    } finally {
+      setAddingTag(false);
+    }
   };
 
   const openDetailsEditor = () => {
@@ -433,26 +444,14 @@ function SummaryDetailContent({ params }: { params: Promise<{ id: string }> }) {
                     {editingTags ? t('common.close') : t('summaries.editTags')}
                   </Button>
                 </div>
-                <div className="flex flex-wrap gap-1.5">
-                  {(editingTags ? tags ?? [] : summary.tags).map((tag) => {
-                    const selected = summary.tags.some((x) => x.id === tag.id);
-                    return (
-                      <button
-                        key={tag.id}
-                        type="button"
-                        disabled={!editingTags}
-                        onClick={() => toggleTag(tag.id)}
-                        className={cn(
-                          'rounded-full border px-2.5 py-0.5 text-xs transition-colors',
-                          selected ? 'bg-primary text-primary-foreground border-transparent' : 'hover:bg-accent'
-                        )}
-                      >
-                        {tag.name}
-                      </button>
-                    );
-                  })}
-                  {!editingTags && summary.tags.length === 0 && <span className="text-xs text-muted-foreground">{t('common.none')}</span>}
-                </div>
+                <TagEditor
+                  allTags={tags ?? []}
+                  selectedTags={summary.tags}
+                  editing={editingTags}
+                  onToggle={toggleTag}
+                  onAddNew={addNewTag}
+                  busy={addingTag}
+                />
               </div>
 
               {summary.drive_doc_url ? (

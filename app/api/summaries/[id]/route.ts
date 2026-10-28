@@ -2,7 +2,7 @@ import { NextResponse } from 'next/server';
 import { handleRoute, HttpError, readJson } from '@/lib/http';
 import { requireUser, logAudit } from '@/lib/auth';
 import { getSupabaseAdmin } from '@/lib/supabase';
-import { getSummaryById } from '@/lib/summaries/repository';
+import { getSummaryById, findOrCreateTagsByName } from '@/lib/summaries/repository';
 import { recomputeCompleteness } from '@/lib/summaries/process';
 import { deleteSummaryFromDrive, exportSummaryToDrive } from '@/lib/summaries/drive-export';
 import { syncActionItems } from '@/lib/summaries/action-items';
@@ -14,6 +14,8 @@ type Params = { params: Promise<{ id: string }> };
 interface SummaryPatchBody {
   folderId?: string;
   tagIds?: string[];
+  /** Free-form tag names to create (if they don't already exist) and apply alongside tagIds. */
+  newTagNames?: string[];
   title?: string;
   meetingDate?: string | null;
   meetingTime?: string | null;
@@ -59,12 +61,14 @@ export const PATCH = handleRoute(async (request: Request, { params }: Params) =>
     if (error) throw new Error(error.message);
   }
 
-  if (Array.isArray(body.tagIds)) {
+  if (Array.isArray(body.tagIds) || Array.isArray(body.newTagNames)) {
+    const newTagRows = body.newTagNames?.length ? await findOrCreateTagsByName(body.newTagNames) : [];
+    const finalTagIds = Array.from(new Set([...(body.tagIds ?? []), ...newTagRows.map((t) => t.id)]));
     await supabaseAdmin.from('meeting_summary_tags').delete().eq('summary_id', id);
-    if (body.tagIds.length > 0) {
+    if (finalTagIds.length > 0) {
       const { error } = await supabaseAdmin
         .from('meeting_summary_tags')
-        .insert(body.tagIds.map((tagId, i) => ({ summary_id: id, tag_id: tagId, position: i })));
+        .insert(finalTagIds.map((tagId, i) => ({ summary_id: id, tag_id: tagId, position: i })));
       if (error) throw new Error(error.message);
     }
   }
@@ -98,6 +102,7 @@ export const PATCH = handleRoute(async (request: Request, { params }: Params) =>
 
   const shouldRecompute =
     Array.isArray(body.tagIds) ||
+    Array.isArray(body.newTagNames) ||
     body.meetingDate !== undefined ||
     body.meetingTime !== undefined ||
     Object.keys(extractedPatch).length > 0;

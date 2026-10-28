@@ -4,6 +4,7 @@ import { requireUser, logAudit } from '@/lib/auth';
 import { getSupabaseAdmin } from '@/lib/supabase';
 import { getArchiveItemById } from '@/lib/archive/repository';
 import { deleteArchiveItemFromDrive } from '@/lib/archive/drive-export';
+import { findOrCreateTagsByName } from '@/lib/summaries/repository';
 
 export const dynamic = 'force-dynamic';
 
@@ -12,6 +13,8 @@ type Params = { params: Promise<{ id: string }> };
 interface ArchivePatchBody {
   title?: string;
   tagIds?: string[];
+  /** Free-form tag names to create (if they don't already exist) and apply alongside tagIds. */
+  newTagNames?: string[];
 }
 
 export const GET = handleRoute(async (request: Request, { params }: Params) => {
@@ -39,12 +42,14 @@ export const PATCH = handleRoute(async (request: Request, { params }: Params) =>
     if (error) throw new Error(error.message);
   }
 
-  if (Array.isArray(body.tagIds)) {
+  if (Array.isArray(body.tagIds) || Array.isArray(body.newTagNames)) {
+    const newTagRows = body.newTagNames?.length ? await findOrCreateTagsByName(body.newTagNames) : [];
+    const finalTagIds = Array.from(new Set([...(body.tagIds ?? []), ...newTagRows.map((t) => t.id)]));
     await supabaseAdmin.from('archive_item_tags').delete().eq('archived_item_id', id);
-    if (body.tagIds.length > 0) {
+    if (finalTagIds.length > 0) {
       const { error } = await supabaseAdmin
         .from('archive_item_tags')
-        .insert(body.tagIds.map((tagId) => ({ archived_item_id: id, tag_id: tagId })));
+        .insert(finalTagIds.map((tagId) => ({ archived_item_id: id, tag_id: tagId })));
       if (error) throw new Error(error.message);
     }
   }

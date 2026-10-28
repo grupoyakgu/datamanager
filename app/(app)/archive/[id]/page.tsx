@@ -13,12 +13,12 @@ import { LinkifiedText } from '@/components/summaries/linkified-text';
 import { formatDate } from '@/components/summaries/summary-card';
 import { EmptyState } from '@/components/layout/page-header';
 import { MoveToFolder } from '@/components/shared/move-to-folder';
+import { TagEditor } from '@/components/shared/tag-editor';
 import { useArchiveItem, useArchiveFolderOptions, useMoveArchiveItemFolder, useInvalidateArchive } from '@/hooks/use-archive';
 import { useTags } from '@/hooks/use-api';
 import { useUser } from '@/hooks/use-user';
 import { api } from '@/lib/api-client';
 import { useT } from '@/lib/i18n/context';
-import { cn } from '@/lib/utils';
 import type { ArchiveItemView } from '@/types/database';
 
 export default function ArchiveDetailPage({ params }: { params: Promise<{ id: string }> }) {
@@ -37,6 +37,7 @@ export default function ArchiveDetailPage({ params }: { params: Promise<{ id: st
   const [titleInput, setTitleInput] = useState('');
   const [savingTitle, setSavingTitle] = useState(false);
   const [editingTags, setEditingTags] = useState(false);
+  const [addingTag, setAddingTag] = useState(false);
   const [commentText, setCommentText] = useState('');
   const [postingComment, setPostingComment] = useState(false);
 
@@ -89,6 +90,15 @@ export default function ArchiveDetailPage({ params }: { params: Promise<{ id: st
     const current = item.tags.map((tag) => tag.id);
     const next = current.includes(tagId) ? current.filter((x) => x !== tagId) : [...current, tagId];
     update({ tagIds: next });
+  };
+
+  const addNewTag = async (name: string) => {
+    setAddingTag(true);
+    try {
+      await update({ tagIds: item.tags.map((tag) => tag.id), newTagNames: [name] });
+    } finally {
+      setAddingTag(false);
+    }
   };
 
   const postComment = async () => {
@@ -243,26 +253,14 @@ export default function ArchiveDetailPage({ params }: { params: Promise<{ id: st
                     {editingTags ? t('common.close') : t('summaries.editTags')}
                   </Button>
                 </div>
-                <div className="flex flex-wrap gap-1.5">
-                  {(editingTags ? tags ?? [] : item.tags).map((tag) => {
-                    const selected = item.tags.some((x) => x.id === tag.id);
-                    return (
-                      <button
-                        key={tag.id}
-                        type="button"
-                        disabled={!editingTags}
-                        onClick={() => toggleTag(tag.id)}
-                        className={cn(
-                          'rounded-full border px-2.5 py-0.5 text-xs transition-colors',
-                          selected ? 'bg-primary text-primary-foreground border-transparent' : 'hover:bg-accent'
-                        )}
-                      >
-                        {tag.name}
-                      </button>
-                    );
-                  })}
-                  {!editingTags && item.tags.length === 0 && <span className="text-xs text-muted-foreground">{t('common.none')}</span>}
-                </div>
+                <TagEditor
+                  allTags={tags ?? []}
+                  selectedTags={item.tags}
+                  editing={editingTags}
+                  onToggle={toggleTag}
+                  onAddNew={addNewTag}
+                  busy={addingTag}
+                />
               </div>
 
               <div className="pt-2 border-t border-border space-y-1.5">
