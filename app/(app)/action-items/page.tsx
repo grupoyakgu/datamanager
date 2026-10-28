@@ -79,7 +79,9 @@ export default function ActionItemsPage() {
                     '—'
                   )}
                 </TD>
-                <TD className="text-muted-foreground whitespace-nowrap">{formatDate(item.created_at)}</TD>
+                <TD className="text-muted-foreground whitespace-nowrap">
+                  {formatDate(item.summary?.email_received_at ?? item.created_at)}
+                </TD>
                 <TD>
                   <Select
                     value={item.status}

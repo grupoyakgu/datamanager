@@ -31,19 +31,27 @@ export interface ListActionItemsFilters {
   statuses?: ActionItemStatus[];
 }
 
-/** All action items matching the given statuses (default: open + in_process), most recent first. */
+/**
+ * All action items matching the given statuses (default: open + in_process),
+ * most recent first — "most recent" meaning the ORIGINAL email's date
+ * (summary.email_received_at), not when the row happened to be synced into
+ * this table, which can lag behind by however long the mailbox sync took to
+ * pick the email up.
+ */
 export async function listActionItems(filters: ListActionItemsFilters = {}): Promise<ActionItemListEntry[]> {
   const statuses = filters.statuses ?? ['open', 'in_process'];
   const supabaseAdmin = getSupabaseAdmin();
   const { data, error } = await supabaseAdmin
     .from('action_items')
-    .select('id, text, status, created_at, updated_at, summary:meeting_summaries ( id, title )')
-    .in('status', statuses)
-    .order('created_at', { ascending: false });
+    .select('id, text, status, created_at, updated_at, summary:meeting_summaries ( id, title, email_received_at )')
+    .in('status', statuses);
   if (error) throw new Error(error.message);
 
-  return (data ?? []).map((row) => {
-    const summary = row.summary as { id: string; title: string } | { id: string; title: string }[] | null;
+  const items = (data ?? []).map((row) => {
+    const summary = row.summary as
+      | { id: string; title: string; email_received_at: string | null }
+      | { id: string; title: string; email_received_at: string | null }[]
+      | null;
     return {
       id: row.id as string,
       text: row.text as string,
@@ -52,6 +60,12 @@ export async function listActionItems(filters: ListActionItemsFilters = {}): Pro
       updated_at: row.updated_at as string,
       summary: Array.isArray(summary) ? (summary[0] ?? null) : summary,
     };
+  });
+
+  return items.sort((a, b) => {
+    const dateA = a.summary?.email_received_at ?? a.created_at;
+    const dateB = b.summary?.email_received_at ?? b.created_at;
+    return new Date(dateB).getTime() - new Date(dateA).getTime();
   });
 }
 

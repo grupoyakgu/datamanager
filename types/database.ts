@@ -145,7 +145,7 @@ export interface ActionItemRow {
 export interface ActionItemListEntry extends ActionItemRow {
   created_at: string;
   updated_at: string;
-  summary: { id: string; title: string } | null;
+  summary: { id: string; title: string; email_received_at: string | null } | null;
 }
 
 export interface ArchiveAttachmentView {
