@@ -17,9 +17,10 @@ export const PATCH = handleRoute(async (request: Request, { params }: Params) =>
   const folderName = body.folderName?.trim();
   if (!folderName) throw new HttpError(400, 'folderName is required');
 
-  const { data: existing } = await getSupabaseAdmin().from('archive_sender_domains').select('folder_name').eq('id', id).maybeSingle();
+  const { data: existing } = await getSupabaseAdmin().from('archive_sender_domains').select('domain, folder_name').eq('id', id).maybeSingle();
   if (!existing) throw new HttpError(404, 'Sender domain not found');
   const oldFolderName = existing.folder_name as string;
+  const domain = existing.domain as string;
 
   const { data, error } = await getSupabaseAdmin()
     .from('archive_sender_domains')
@@ -35,7 +36,7 @@ export const PATCH = handleRoute(async (request: Request, { params }: Params) =>
   const mailboxUser = await getArchiveMailboxUser();
   if (mailboxUser) {
     try {
-      await renameSenderDomainSubfolders(mailboxUser.id, oldFolderName, folderName);
+      await renameSenderDomainSubfolders(mailboxUser.id, id, domain, oldFolderName, folderName);
     } catch (error) {
       console.error('Failed to rename sender-domain Drive subfolders', error);
     }

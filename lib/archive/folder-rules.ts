@@ -2,7 +2,7 @@ import { getSupabaseAdmin } from '@/lib/supabase';
 import { getSettings } from '@/lib/settings';
 import { ensureFolder, ensureDomainReaderAccess } from '@/lib/google/drive';
 import { resolveOrCreateProject } from './projects';
-import { resolveSenderDomainFolderName } from './sender-domains';
+import { resolveSenderDomain, recordSenderDomainFolder } from './sender-domains';
 
 /**
  * The literal "archive" folder in the Archive mailbox's own Drive, under its
@@ -44,13 +44,17 @@ export async function resolveArchiveDestination(
 ): Promise<ArchiveDestination> {
   const project = await resolveOrCreateProject(mailboxUserId, projectName);
   const senderDomain = originalSenderEmail?.toLowerCase().split('@')[1] || null;
-  const subfolderName = await resolveSenderDomainFolderName(senderDomain);
+  const domainConfig = await resolveSenderDomain(senderDomain);
 
   let folderId = project.drive_folder_id;
   let folderName = project.drive_folder_name;
-  if (subfolderName) {
-    folderId = await ensureFolder(mailboxUserId, project.drive_folder_id, subfolderName);
-    folderName = `${project.drive_folder_name} / ${subfolderName}`;
+  if (domainConfig) {
+    folderId = await ensureFolder(mailboxUserId, project.drive_folder_id, domainConfig.folderName);
+    folderName = `${project.drive_folder_name} / ${domainConfig.folderName}`;
+    // Recorded so a later rename of this domain's display name can retarget
+    // this exact folder by id instead of re-finding it by name (see
+    // renameSenderDomainSubfolders).
+    await recordSenderDomainFolder(domainConfig.id, project.id, folderId);
   }
 
   try {

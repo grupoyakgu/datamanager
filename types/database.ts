@@ -214,6 +214,15 @@ export interface ArchiveSenderDomain {
   created_at: string;
 }
 
+/** The actual Drive folder id created for one (sender domain, project) pair — lets a later rename retarget that exact folder by id, instead of re-finding it by its old (possibly already-drifted) name. */
+export interface ArchiveSenderDomainFolder {
+  id: string;
+  sender_domain_id: string;
+  project_id: string;
+  drive_folder_id: string;
+  created_at: string;
+}
+
 /** Admin-managed rule routing an archived item's attachments to a Drive
  * folder based on the original sender's email or domain. */
 export interface ArchiveFolderRule {
