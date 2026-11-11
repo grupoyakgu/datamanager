@@ -1,4 +1,4 @@
-import { googleFetch, GoogleAuthError } from './oauth';
+import { googleFetch, GoogleAuthError, getGoogleAccessToken, markAuthorizationRequired } from './oauth';
 
 const DRIVE_BASE = 'https://www.googleapis.com/drive/v3';
 const FILE_FIELDS = 'id,name,mimeType,modifiedTime,size,webViewLink,iconLink,owners(displayName,emailAddress),parents';
@@ -149,6 +149,42 @@ export async function uploadFile(
     headers: { 'Content-Type': `multipart/related; boundary=${boundary}` },
     body,
   });
+}
+
+/**
+ * Start a resumable upload session for a new file in `parents` and return
+ * its session URL. The caller (a browser, for drag-and-drop uploads) then
+ * PUTs the file bytes directly to that URL — bypassing our own server
+ * entirely for the actual bytes, so large files don't hit a serverless
+ * function's request-body limit, and the browser gets real upload-progress
+ * events. The session URL itself carries authorization for that one
+ * upload; nothing further needs to be sent to it.
+ */
+export async function createResumableUploadSession(
+  userId: string,
+  params: { name: string; mimeType: string; parents: string[] }
+): Promise<string> {
+  const token = await getGoogleAccessToken(userId);
+  const response = await fetch(`https://www.googleapis.com/upload/drive/v3/files?uploadType=resumable&supportsAllDrives=true`, {
+    method: 'POST',
+    headers: {
+      Authorization: `Bearer ${token}`,
+      'Content-Type': 'application/json; charset=UTF-8',
+      'X-Upload-Content-Type': params.mimeType,
+    },
+    body: JSON.stringify({ name: params.name, parents: params.parents }),
+  });
+  if (response.status === 401 || response.status === 403) {
+    const text = await response.text();
+    if (response.status === 401) await markAuthorizationRequired(userId, text.slice(0, 300));
+    throw new GoogleAuthError(`Google API ${response.status}: ${text.slice(0, 300)}`, response.status === 401);
+  }
+  if (!response.ok) {
+    throw new Error(`Google API ${response.status}: ${(await response.text()).slice(0, 300)}`);
+  }
+  const location = response.headers.get('Location');
+  if (!location) throw new Error('Google Drive did not return a resumable upload session URL');
+  return location;
 }
 
 /** Rename a file or folder in place. */

@@ -242,8 +242,12 @@ export default function ArchiveDetailPage({ params }: { params: Promise<{ id: st
           <Card>
             <CardContent className="pt-5 text-sm space-y-2">
               <Row label={t('archive.subject')} value={item.subject} />
-              {item.original_sender_name && <Row label={t('archive.originalSender')} value={item.original_sender_name} />}
-              {item.original_sender_email && <Row label={t('archive.originalSenderEmail')} value={item.original_sender_email} />}
+              {item.original_sender_name && (
+                <Row label={item.source === 'manual' ? t('archive.uploadedBy') : t('archive.originalSender')} value={item.original_sender_name} />
+              )}
+              {item.source !== 'manual' && item.original_sender_email && (
+                <Row label={t('archive.originalSenderEmail')} value={item.original_sender_email} />
+              )}
               {item.is_forward && item.forwarded_by_name && <Row label={t('archive.forwardedBy')} value={item.forwarded_by_name} />}
               {item.is_forward && item.forwarded_by_email && <Row label={t('archive.forwardedByEmail')} value={item.forwarded_by_email} />}
 

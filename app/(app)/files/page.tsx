@@ -1,6 +1,6 @@
 'use client';
 
-import { useMemo, useState } from 'react';
+import { useMemo, useState, type DragEvent } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { ArrowLeft, Folder, FileText, ExternalLink, ChevronRight, RefreshCw, X } from 'lucide-react';
 import { PageHeader, EmptyState } from '@/components/layout/page-header';
@@ -11,7 +11,9 @@ import { Badge } from '@/components/ui/badge';
 import { Table, THead, TBody, TR, TH, TD } from '@/components/ui/table';
 import { SearchBar } from '@/components/summaries/search-bar';
 import { MoveToFolder } from '@/components/shared/move-to-folder';
+import { UploadProgressPanel, type UploadTask } from '@/components/files/upload-progress-panel';
 import { api, ApiError } from '@/lib/api-client';
+import { uploadFileToFolder } from '@/lib/drive-upload-client';
 import { useUser } from '@/hooks/use-user';
 import {
   useArchiveAttachmentsByTags,
@@ -83,6 +85,8 @@ export default function FilesPage() {
   const [asking, setAsking] = useState(false);
   const [askError, setAskError] = useState<string | null>(null);
   const [searchNonce, setSearchNonce] = useState(0);
+  const [isDragging, setIsDragging] = useState(false);
+  const [uploadTasks, setUploadTasks] = useState<UploadTask[]>([]);
 
   const clearAskResult = () => {
     setAskResult(null);
@@ -164,6 +168,60 @@ export default function FilesPage() {
       setSyncMessage(err instanceof Error ? err.message : t('common.error'));
     } finally {
       setSyncing(false);
+    }
+  };
+
+  const handleDrop = async (e: DragEvent<HTMLDivElement>) => {
+    e.preventDefault();
+    setIsDragging(false);
+    if (showResults) return;
+
+    const droppedFiles = Array.from(e.dataTransfer.files);
+    if (droppedFiles.length === 0) return;
+    const destFolderId = folderId ?? data?.rootId;
+    if (!destFolderId) return;
+
+    const tasks: UploadTask[] = droppedFiles.map((file) => ({
+      id: crypto.randomUUID(),
+      name: file.name,
+      progress: 0,
+      status: 'uploading',
+    }));
+    setUploadTasks((prev) => [...prev, ...tasks]);
+
+    const results = await Promise.allSettled(
+      droppedFiles.map((file, i) =>
+        uploadFileToFolder(destFolderId, file, (pct) => {
+          setUploadTasks((prev) => prev.map((task) => (task.id === tasks[i].id ? { ...task, progress: pct } : task)));
+        })
+      )
+    );
+
+    const successes: { taskId: string; driveFileId: string }[] = [];
+    results.forEach((result, i) => {
+      if (result.status === 'fulfilled') {
+        successes.push({ taskId: tasks[i].id, driveFileId: result.value.id });
+        setUploadTasks((prev) => prev.map((task) => (task.id === tasks[i].id ? { ...task, status: 'done', progress: 100 } : task)));
+      } else {
+        const message = result.reason instanceof Error ? result.reason.message : t('common.error');
+        setUploadTasks((prev) => prev.map((task) => (task.id === tasks[i].id ? { ...task, status: 'error', error: message } : task)));
+      }
+    });
+
+    if (successes.length > 0) {
+      try {
+        await api.post('/api/archive/upload/finalize', {
+          folderId: destFolderId,
+          driveFileIds: successes.map((s) => s.driveFileId),
+        });
+        queryClient.invalidateQueries({ queryKey: ['drive'] });
+        invalidateArchive();
+      } catch (err) {
+        const message = err instanceof Error ? err.message : t('files.uploadSaveFailed');
+        setUploadTasks((prev) =>
+          prev.map((task) => (successes.some((s) => s.taskId === task.id) ? { ...task, status: 'error', error: message } : task))
+        );
+      }
     }
   };
 
@@ -324,7 +382,25 @@ export default function FilesPage() {
           </Table>
         )
       ) : (
-        <>
+        <div
+          className="relative"
+          onDragOver={(e) => {
+            e.preventDefault();
+            setIsDragging(true);
+          }}
+          onDragLeave={(e) => {
+            e.preventDefault();
+            setIsDragging(false);
+          }}
+          onDrop={handleDrop}
+        >
+          {isDragging && (
+            <div className="absolute inset-0 z-10 flex items-center justify-center rounded-lg border-2 border-dashed border-primary bg-primary/5 pointer-events-none">
+              <p className="text-sm font-medium text-primary">
+                {t('files.dropHint')} {data?.folder?.name ?? data?.rootName ?? ''}
+              </p>
+            </div>
+          )}
           <nav className="flex items-center flex-wrap gap-1 text-sm mb-4">
             {crumbs.map((c, i) => {
               const isLast = i === crumbs.length - 1;
@@ -418,8 +494,9 @@ export default function FilesPage() {
               </TBody>
             </Table>
           )}
-        </>
+        </div>
       )}
+      <UploadProgressPanel tasks={uploadTasks} onDismiss={() => setUploadTasks([])} />
     </div>
   );
 }

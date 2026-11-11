@@ -3,7 +3,7 @@ import { prettySenderName } from './display-name';
 import type { ArchiveItemView, ArchiveAttachmentSearchResult, ArchiveTagOption } from '@/types/database';
 
 export const ARCHIVE_SELECT = `
-  id, title, subject, body_text, is_forward,
+  id, title, subject, body_text, source, is_forward,
   original_sender_name, original_sender_email, forwarded_by_name, forwarded_by_email,
   email_received_at, drive_sync_error, drive_folder_name, created_at,
   project:archive_projects ( id, name ),
@@ -28,6 +28,7 @@ interface RawArchiveItem {
   title: string;
   subject: string;
   body_text: string;
+  source: 'gmail' | 'manual';
   is_forward: boolean;
   original_sender_name: string | null;
   original_sender_email: string | null;
@@ -62,6 +63,7 @@ export function toArchiveItemView(raw: unknown): ArchiveItemView {
     title: row.title,
     subject: row.subject,
     body_text: row.body_text,
+    source: row.source,
     is_forward: row.is_forward,
     original_sender_name: row.original_sender_name,
     original_sender_email: row.original_sender_email,

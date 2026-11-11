@@ -179,6 +179,7 @@ export interface ArchiveItemView {
   title: string;
   subject: string;
   body_text: string;
+  source: 'gmail' | 'manual';
   is_forward: boolean;
   original_sender_name: string | null;
   original_sender_email: string | null;
