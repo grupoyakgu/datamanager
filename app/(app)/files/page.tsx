@@ -1,8 +1,9 @@
 'use client';
 
 import { useMemo, useState, type DragEvent } from 'react';
+import Link from 'next/link';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { ArrowLeft, Folder, FileText, ExternalLink, ChevronRight, RefreshCw, X, Trash2, Mail, Upload } from 'lucide-react';
+import { ArrowLeft, Folder, FileText, ExternalLink, ChevronRight, RefreshCw, X, Trash2, Mail, Upload, Tag as TagIcon } from 'lucide-react';
 import { PageHeader, EmptyState } from '@/components/layout/page-header';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
@@ -66,6 +67,20 @@ function fileTypeLabel(file: { mimeType: string; name: string }): string {
   const dot = file.name.lastIndexOf('.');
   if (dot > 0 && dot < file.name.length - 1) return file.name.slice(dot + 1).toUpperCase();
   return file.mimeType.split('/').pop()?.toUpperCase() ?? file.mimeType;
+}
+
+/**
+ * Where the "open in Drive" icon should point. A file's own name already
+ * opens the file itself (see the Name column), so this points at its
+ * containing folder instead — showing the file in its Drive location,
+ * which is what people actually want from an "open in Drive" action on a
+ * row that's already open in our own browser. A folder row has no
+ * separate "location" to show — it already points at itself.
+ */
+function driveLocationLink(file: DriveFileWithSource): string | null {
+  if (file.isFolder) return file.webViewLink ?? null;
+  const parentId = file.parents?.[0];
+  return parentId ? `https://drive.google.com/drive/folders/${parentId}` : (file.webViewLink ?? null);
 }
 
 export default function FilesPage() {
@@ -512,9 +527,9 @@ export default function FilesPage() {
                     </TD>
                     <TD className="text-right">
                       <div className="flex items-center justify-end gap-1">
-                        {file.webViewLink && (
+                        {driveLocationLink(file) && (
                           <a
-                            href={file.webViewLink}
+                            href={driveLocationLink(file)!}
                             target="_blank"
                             rel="noopener noreferrer"
                             title={t('files.openInDrive')}
@@ -523,6 +538,18 @@ export default function FilesPage() {
                           >
                             <ExternalLink size={14} />
                           </a>
+                        )}
+                        {!file.isFolder && file.archivedItemId && (
+                          <Link
+                            href={`/archive/${file.archivedItemId}`}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            title={t('files.metadataTags')}
+                            aria-label={t('files.metadataTags')}
+                            className="inline-flex h-9 w-9 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-accent hover:text-accent-foreground"
+                          >
+                            <TagIcon size={14} />
+                          </Link>
                         )}
                         {!file.isFolder && (
                           <MoveToFolder

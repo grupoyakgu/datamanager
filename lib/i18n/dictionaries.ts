@@ -194,6 +194,7 @@ export const en = {
     viaUpload: 'Uploaded via drag & drop',
     deleteFile: 'Delete file',
     confirmDeleteFile: 'Delete this file from Drive? This cannot be undone.',
+    metadataTags: 'Metadata & tags',
   },
   tags: {
     title: 'Tags',
@@ -577,6 +578,7 @@ export const es: DeepStringRecord = {
     viaUpload: 'Subido por arrastre',
     deleteFile: 'Eliminar archivo',
     confirmDeleteFile: '¿Eliminar este archivo de Drive? Esto no se puede deshacer.',
+    metadataTags: 'Metadatos y etiquetas',
   },
   tags: {
     title: 'Etiquetas',
