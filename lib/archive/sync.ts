@@ -7,7 +7,6 @@ import { splitExtension } from '@/lib/summaries/drive-export';
 import { parseAddress, parseForward, parseInlineTags } from './parse-forward';
 import { exportArchiveAttachments } from './drive-export';
 import { resolveOrCreateProject } from './projects';
-import { createReviewToken } from './review-tokens';
 import { extractArchiveMetadata } from '@/lib/ai/archive-metadata';
 
 /** Drop attachments whose extension is on the admin-configured exclude list (e.g. png). */
@@ -77,16 +76,17 @@ async function allAttachmentsSynced(archivedItemId: string): Promise<boolean> {
  * email is left in place so a later sync can retry it.
  *
  * The sender's own "tags:project_name,a,b" line (see parseInlineTags) names
- * the destination project (first value — mandatory, see below) plus any
- * further values as plain searchable metadata tags (can create brand-new
- * tags via findOrCreateTagsByName). Separately, AI-generated metadata
- * (document type, topic, people/companies, date, keywords) is extracted
- * from the subject/body/sender/filenames and stored apart from those
+ * the destination project (first value — mandatory) plus any further values
+ * as plain searchable metadata tags (can create brand-new tags via
+ * findOrCreateTagsByName). Separately, AI-generated metadata (document
+ * type, topic, people/companies, date, keywords) is extracted from the
+ * subject/body/sender/filenames and stored apart from those
  * manually-declared tags (archive_ai_metadata) — text-based only, not the
  * attachment file contents themselves. An email with no "tags:" line at all
- * has no project to route by, so it's flagged for review (shared "Temp"
- * folder) and the original sender is emailed a one-time link to assign one
- * themselves, rather than being silently filed anywhere.
+ * has no project to route by, so nothing is saved for it at all: the
+ * original sender gets a reply (in English and Spanish) asking them to
+ * resend with a "tags:project_name" line, and the email is trashed so it
+ * isn't retried on the next sync.
  *
  * Attachments whose extension is on the admin-configured exclude list (e.g.
  * png, for inline signature images) are dropped entirely — never saved to
@@ -108,6 +108,48 @@ export async function ingestArchiveMessage(
   const originalSenderEmail = parsed.isForward ? parsed.originalSenderEmail : forwardedBy.email;
   const subject = (parsed.isForward ? parsed.originalSubject : null) || message.subject || 'Untitled';
   const title = parsed.forwarderNote?.trim() ? parsed.forwarderNote.trim().slice(0, 200) : subject;
+
+  // The first "tags:" value names the project — mandatory. Checked before
+  // anything is written to the database: without one there is nothing to
+  // save, so the message is rejected outright rather than filed anywhere.
+  const allTagNames = parseInlineTags(message.bodyText);
+  const projectName = allTagNames[0] ?? null;
+  if (!projectName) {
+    if (originalSenderEmail) {
+      try {
+        await sendEmail(mailboxUserId, {
+          to: [originalSenderEmail],
+          subject: `Action needed / Acción requerida: "${subject}"`,
+          text: [
+            `Hi${originalSenderName ? ` ${originalSenderName}` : ''},`,
+            '',
+            `We received your email "${subject}" but it didn't include a "tags:project_name" line, so we don't know which project it belongs to.`,
+            'Please resend it with a line such as "tags:project_name" (for example, "tags:bds36") so we can archive it.',
+            '',
+            '— — —',
+            '',
+            `Hola${originalSenderName ? ` ${originalSenderName}` : ''},`,
+            '',
+            `Recibimos tu correo "${subject}", pero no incluía una línea "tags:nombre_proyecto", así que no sabemos a qué proyecto pertenece.`,
+            'Por favor, reenvíalo con una línea como "tags:nombre_proyecto" (por ejemplo, "tags:bds36") para poder archivarlo.',
+            '',
+            'Thanks! / ¡Gracias!',
+          ].join('\n'),
+        });
+      } catch (notifyError) {
+        console.error('Failed to send missing-project-tag reply for message', message.id, notifyError);
+      }
+    } else {
+      console.error('No project tag and no identifiable sender for message', message.id, '— dropping');
+    }
+    try {
+      await trashMessage(mailboxUserId, message.id);
+    } catch (trashError) {
+      console.error('Failed to trash rejected no-project-tag email', message.id, trashError);
+    }
+    return null;
+  }
+  const metadataTagNames = allTagNames.slice(1);
 
   const { data: inserted, error } = await supabaseAdmin
     .from('archived_items')
@@ -137,13 +179,6 @@ export async function ingestArchiveMessage(
   const archivedItemId = inserted.id as string;
   let readyToDelete = true;
 
-  // The first "tags:" value names the project (mandatory — its absence is
-  // flagged below, not silently ignored); any further values are plain
-  // searchable metadata tags, same mechanism as before.
-  const allTagNames = parseInlineTags(message.bodyText);
-  const projectName = allTagNames[0] ?? null;
-  const metadataTagNames = allTagNames.slice(1);
-
   try {
     if (metadataTagNames.length > 0) {
       const tagIds = (await findOrCreateTagsByName(metadataTagNames)).map((t) => t.id);
@@ -157,43 +192,11 @@ export async function ingestArchiveMessage(
     console.error('Tag parsing failed for archived item', archivedItemId, tagError);
   }
 
-  if (projectName) {
-    try {
-      const project = await resolveOrCreateProject(mailboxUserId, projectName);
-      await supabaseAdmin.from('archived_items').update({ project_id: project.id }).eq('id', archivedItemId);
-    } catch (projectError) {
-      console.error('Failed to resolve project for archived item', archivedItemId, projectName, projectError);
-    }
-  } else {
-    // No "tags:" line at all — flag for manual review (files to a shared
-    // "Temp" folder, see drive-export.ts) instead of silently guessing, and
-    // ask the original sender to pick the right project themselves via a
-    // one-time link, since they likely have no account in this system.
-    console.error('No project tag found for archived item', archivedItemId, '— flagged for review');
-    if (originalSenderEmail) {
-      try {
-        const token = await createReviewToken(archivedItemId);
-        const baseUrl = process.env.NEXT_PUBLIC_APP_URL;
-        if (baseUrl) {
-          await sendEmail(mailboxUserId, {
-            to: [originalSenderEmail],
-            subject: `Action needed: which project does "${subject}" belong to?`,
-            text: [
-              `Hi${originalSenderName ? ` ${originalSenderName}` : ''},`,
-              '',
-              `We received your email "${subject}" but couldn't tell which project it belongs to — it didn't include a "tags:project_name" line.`,
-              '',
-              'Please let us know using this link:',
-              `${baseUrl}/archive-review/${token}`,
-              '',
-              'Thanks!',
-            ].join('\n'),
-          });
-        }
-      } catch (notifyError) {
-        console.error('Failed to send missing-project notification for archived item', archivedItemId, notifyError);
-      }
-    }
+  try {
+    const project = await resolveOrCreateProject(mailboxUserId, projectName);
+    await supabaseAdmin.from('archived_items').update({ project_id: project.id }).eq('id', archivedItemId);
+  } catch (projectError) {
+    console.error('Failed to resolve project for archived item', archivedItemId, projectName, projectError);
   }
 
   try {

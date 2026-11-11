@@ -1,19 +1,12 @@
-import crypto from 'crypto';
 import { getSupabaseAdmin } from '@/lib/supabase';
 
-const TOKEN_TTL_DAYS = 14;
-
-/** A single-use, expiring link so an external sender (who has no account in this system) can assign a project to an item flagged for having no "tags:" line. */
-export async function createReviewToken(archivedItemId: string): Promise<string> {
-  const token = crypto.randomBytes(24).toString('base64url');
-  const expiresAt = new Date(Date.now() + TOKEN_TTL_DAYS * 24 * 60 * 60 * 1000).toISOString();
-  const { error } = await getSupabaseAdmin()
-    .from('archive_review_tokens')
-    .insert({ archived_item_id: archivedItemId, token, expires_at: expiresAt });
-  if (error) throw new Error(error.message);
-  return token;
-}
-
+/**
+ * Resolving/consuming existing links only — new ones are no longer issued.
+ * An email with no "tags:" line is now rejected outright (see
+ * ingestArchiveMessage) rather than filed to a "Temp" folder with a link
+ * for the sender to assign a project later, so these only serve whatever
+ * links were already sent out under that earlier behavior.
+ */
 export interface ReviewTokenLookup {
   archivedItemId: string;
   title: string;
