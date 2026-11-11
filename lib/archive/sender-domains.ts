@@ -22,6 +22,25 @@ export async function resolveSenderDomain(domain: string | null): Promise<{ id: 
 }
 
 /**
+ * The Drive folder id already recorded for a (sender domain, project) pair,
+ * if any — lets a caller reuse that exact folder directly instead of
+ * re-deriving it from the domain's current display name, which is what
+ * actually creates a brand-new, wrongly-named folder the moment that name
+ * no longer matches what's in Drive (e.g. right after a rename). Once a
+ * folder is tracked, name lookups should never be needed for it again.
+ */
+export async function getTrackedSenderDomainFolderId(senderDomainId: string, projectId: string): Promise<string | null> {
+  const { data, error } = await getSupabaseAdmin()
+    .from('archive_sender_domain_folders')
+    .select('drive_folder_id')
+    .eq('sender_domain_id', senderDomainId)
+    .eq('project_id', projectId)
+    .maybeSingle();
+  if (error && !isMissingTableError(error)) throw new Error(error.message);
+  return (data?.drive_folder_id as string | undefined) ?? null;
+}
+
+/**
  * Record which Drive folder id was actually used/created for a (sender
  * domain, project) pair. A sender-domain subfolder isn't a single Drive
  * folder — "bds32/cm4arquitectos" and "bds36/cm4arquitectos" are two

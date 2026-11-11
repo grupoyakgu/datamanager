@@ -2,7 +2,7 @@ import { getSupabaseAdmin } from '@/lib/supabase';
 import { getSettings } from '@/lib/settings';
 import { ensureFolder, ensureDomainReaderAccess } from '@/lib/google/drive';
 import { resolveOrCreateProject } from './projects';
-import { resolveSenderDomain, recordSenderDomainFolder } from './sender-domains';
+import { resolveSenderDomain, getTrackedSenderDomainFolderId, recordSenderDomainFolder } from './sender-domains';
 
 /**
  * The literal "archive" folder in the Archive mailbox's own Drive, under its
@@ -49,12 +49,15 @@ export async function resolveArchiveDestination(
   let folderId = project.drive_folder_id;
   let folderName = project.drive_folder_name;
   if (domainConfig) {
-    folderId = await ensureFolder(mailboxUserId, project.drive_folder_id, domainConfig.folderName);
+    // Reuse the exact folder already tracked for this (domain, project)
+    // pair when there is one — looking it up again by the domain's current
+    // display name here is exactly what creates a brand-new, wrongly-named
+    // folder the moment that name no longer matches Drive (e.g. right
+    // after a rename, until the tracked mapping below is recorded for it).
+    const trackedFolderId = await getTrackedSenderDomainFolderId(domainConfig.id, project.id);
+    folderId = trackedFolderId ?? (await ensureFolder(mailboxUserId, project.drive_folder_id, domainConfig.folderName));
     folderName = `${project.drive_folder_name} / ${domainConfig.folderName}`;
-    // Recorded so a later rename of this domain's display name can retarget
-    // this exact folder by id instead of re-finding it by name (see
-    // renameSenderDomainSubfolders).
-    await recordSenderDomainFolder(domainConfig.id, project.id, folderId);
+    if (!trackedFolderId) await recordSenderDomainFolder(domainConfig.id, project.id, folderId);
   }
 
   try {
