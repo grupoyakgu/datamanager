@@ -10,14 +10,14 @@ export const dynamic = 'force-dynamic';
 export const maxDuration = 300;
 
 /**
- * TESTING ONLY, full reset: wipes every archived item (its tag links and
- * comments cascade with it), every file AND subfolder under the Archive
- * Drive root (the root itself is kept, now empty), every archive_folder_rule
- * (their target folders no longer exist), and every tag not used by a
- * meeting summary — a blanket sweep rather than just the tags currently
- * linked to archive items, since a tag can already be orphaned (e.g. from
- * an earlier manual DB cleanup) with no archive_item_tags row left to
- * catch it.
+ * TESTING ONLY, full reset: wipes every archived item (its tag links,
+ * comments, AI metadata and review tokens all cascade with it), every file
+ * AND subfolder under the Archive Drive root (the root itself is kept, now
+ * empty), every archive_project (their Drive folders no longer exist), and
+ * every tag not used by a meeting summary — a blanket sweep rather than
+ * just the tags currently linked to archive items, since a tag can already
+ * be orphaned (e.g. from an earlier manual DB cleanup) with no
+ * archive_item_tags row left to catch it.
  *
  * The Drive side is cleared by walking the actual folder tree
  * (clearFolderContents), not by following DB records — so it also catches
@@ -33,8 +33,8 @@ export const POST = handleRoute(async (request: Request) => {
   const { error } = await supabaseAdmin.from('archived_items').delete().not('id', 'is', null);
   if (error) throw new Error(error.message);
 
-  const { count: rulesCount } = await supabaseAdmin.from('archive_folder_rules').select('id', { count: 'exact', head: true });
-  await supabaseAdmin.from('archive_folder_rules').delete().not('id', 'is', null);
+  const { count: projectsCount } = await supabaseAdmin.from('archive_projects').select('id', { count: 'exact', head: true });
+  await supabaseAdmin.from('archive_projects').delete().not('id', 'is', null);
 
   let tagsDeleted = 0;
   const [{ data: usedBySummaries }, { data: allTags }] = await Promise.all([
@@ -64,7 +64,7 @@ export const POST = handleRoute(async (request: Request) => {
     items: itemCount ?? 0,
     filesDeleted,
     tagsDeleted,
-    rulesCleared: rulesCount ?? 0,
+    projectsCleared: projectsCount ?? 0,
   });
-  return NextResponse.json({ ok: true, deleted: itemCount ?? 0, filesDeleted, tagsDeleted, rulesCleared: rulesCount ?? 0 });
+  return NextResponse.json({ ok: true, deleted: itemCount ?? 0, filesDeleted, tagsDeleted, projectsCleared: projectsCount ?? 0 });
 });

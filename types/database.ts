@@ -162,6 +162,17 @@ export interface ArchiveCommentView {
   author: { id: string; name: string | null; email: string } | null;
 }
 
+/** AI-generated metadata for an archived item, kept separate from its manually-declared tags. */
+export interface ArchiveAiMetadataView {
+  documentType: string | null;
+  topic: string | null;
+  people: string[];
+  companies: string[];
+  documentDate: string | null;
+  keywords: string[];
+  aiError: string | null;
+}
+
 /** An email sent (or forwarded) to the Archive mailbox. */
 export interface ArchiveItemView {
   id: string;
@@ -176,9 +187,29 @@ export interface ArchiveItemView {
   email_received_at: string | null;
   drive_sync_error: string | null;
   drive_folder_name: string | null;
+  project: { id: string; name: string } | null;
+  ai_metadata: ArchiveAiMetadataView | null;
   attachments: ArchiveAttachmentView[];
   tags: { id: string; name: string }[];
   comments: ArchiveCommentView[];
+  created_at: string;
+}
+
+/** A project folder (the first "tags:" value in an archived email) — auto-created on first use. */
+export interface ArchiveProject {
+  id: string;
+  name: string;
+  drive_folder_id: string;
+  drive_folder_name: string;
+  created_at: string;
+}
+
+/** Admin-configured sender email domain → subfolder display name, used to file an archived item's
+ * attachments under project/<subfolder>. An unconfigured domain files directly under the project. */
+export interface ArchiveSenderDomain {
+  id: string;
+  domain: string;
+  folder_name: string;
   created_at: string;
 }
 
@@ -208,6 +239,8 @@ export interface ArchiveAttachmentSearchResult {
   source: string | null;
   /** The Drive folder its attachments were organized into. */
   folderName: string | null;
+  /** The project it's filed under, or null if still unassigned (flagged for review). */
+  projectName: string | null;
   tags: { id: string; name: string }[];
 }
 

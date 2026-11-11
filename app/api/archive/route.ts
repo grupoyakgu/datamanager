@@ -7,6 +7,8 @@ export const dynamic = 'force-dynamic';
 
 export const GET = handleRoute(async (request: Request) => {
   await requireUser(request);
-  const q = new URL(request.url).searchParams.get('q') ?? undefined;
-  return NextResponse.json(await listArchiveItems(q));
+  const params = new URL(request.url).searchParams;
+  const q = params.get('q') ?? undefined;
+  const projectId = params.get('projectId') ?? undefined;
+  return NextResponse.json(await listArchiveItems(q, projectId));
 });

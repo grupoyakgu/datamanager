@@ -6,10 +6,22 @@ export const ARCHIVE_SELECT = `
   id, title, subject, body_text, is_forward,
   original_sender_name, original_sender_email, forwarded_by_name, forwarded_by_email,
   email_received_at, drive_sync_error, drive_folder_name, created_at,
+  project:archive_projects ( id, name ),
+  archive_ai_metadata ( document_type, topic, people, companies, document_date, keywords, ai_error ),
   archive_attachments ( id, filename, mime_type, drive_file_id ),
   archive_item_tags ( tags ( id, name ) ),
   archive_comments ( id, body, created_at, author:users ( id, name, email ) )
 `;
+
+interface RawAiMetadata {
+  document_type: string | null;
+  topic: string | null;
+  people: string[];
+  companies: string[];
+  document_date: string | null;
+  keywords: string[];
+  ai_error: string | null;
+}
 
 interface RawArchiveItem {
   id: string;
@@ -25,6 +37,8 @@ interface RawArchiveItem {
   drive_sync_error: string | null;
   drive_folder_name: string | null;
   created_at: string;
+  project: { id: string; name: string } | { id: string; name: string }[] | null;
+  archive_ai_metadata: RawAiMetadata | RawAiMetadata[] | null;
   archive_attachments: { id: string; filename: string; mime_type: string; drive_file_id: string | null }[] | null;
   archive_item_tags: { tags: { id: string; name: string } | { id: string; name: string }[] | null }[] | null;
   archive_comments:
@@ -56,6 +70,20 @@ export function toArchiveItemView(raw: unknown): ArchiveItemView {
     email_received_at: row.email_received_at,
     drive_sync_error: row.drive_sync_error,
     drive_folder_name: row.drive_folder_name,
+    project: one(row.project),
+    ai_metadata: (() => {
+      const meta = one(row.archive_ai_metadata);
+      if (!meta) return null;
+      return {
+        documentType: meta.document_type,
+        topic: meta.topic,
+        people: meta.people ?? [],
+        companies: meta.companies ?? [],
+        documentDate: meta.document_date,
+        keywords: meta.keywords ?? [],
+        aiError: meta.ai_error,
+      };
+    })(),
     created_at: row.created_at,
     attachments: (row.archive_attachments ?? []).map((a) => ({
       id: a.id,
@@ -73,7 +101,7 @@ export function toArchiveItemView(raw: unknown): ArchiveItemView {
   };
 }
 
-export async function listArchiveItems(query?: string): Promise<ArchiveItemView[]> {
+export async function listArchiveItems(query?: string, projectId?: string): Promise<ArchiveItemView[]> {
   const supabaseAdmin = getSupabaseAdmin();
   let builder = supabaseAdmin.from('archived_items').select(ARCHIVE_SELECT);
   if (query?.trim()) {
@@ -82,6 +110,7 @@ export async function listArchiveItems(query?: string): Promise<ArchiveItemView[
       `title.ilike.%${escaped}%,subject.ilike.%${escaped}%,original_sender_name.ilike.%${escaped}%,original_sender_email.ilike.%${escaped}%`
     );
   }
+  if (projectId) builder = builder.eq('project_id', projectId);
   const { data, error } = await builder.order('email_received_at', { ascending: false, nullsFirst: false });
   if (error) throw new Error(error.message);
   return (data ?? []).map(toArchiveItemView);
@@ -99,9 +128,13 @@ interface RawArchiveAttachmentSearchRow {
   original_sender_name: string | null;
   original_sender_email: string | null;
   drive_folder_name: string | null;
+  project: { name: string } | { name: string }[] | null;
   archive_attachments: { id: string; filename: string; mime_type: string; drive_file_id: string | null }[] | null;
   archive_item_tags: { tags: { id: string; name: string } | { id: string; name: string }[] | null }[] | null;
 }
+
+const ARCHIVE_SEARCH_ROW_SELECT =
+  'id, original_sender_name, original_sender_email, drive_folder_name, project:archive_projects ( name ), archive_attachments ( id, filename, mime_type, drive_file_id ), archive_item_tags ( tags ( id, name ) )';
 
 /** Every attachment belonging to an archived item tagged with at least one of the given tags. */
 export async function listArchiveAttachmentsByTags(tagIds: string[]): Promise<ArchiveAttachmentSearchResult[]> {
@@ -114,9 +147,7 @@ export async function listArchiveAttachmentsByTags(tagIds: string[]): Promise<Ar
 
   const { data, error } = await supabaseAdmin
     .from('archived_items')
-    .select(
-      'id, original_sender_name, original_sender_email, drive_folder_name, archive_attachments ( id, filename, mime_type, drive_file_id ), archive_item_tags ( tags ( id, name ) )'
-    )
+    .select(ARCHIVE_SEARCH_ROW_SELECT)
     .in('id', itemIds)
     .order('email_received_at', { ascending: false, nullsFirst: false });
   if (error) throw new Error(error.message);
@@ -128,6 +159,7 @@ export async function listArchiveAttachmentsByTags(tagIds: string[]): Promise<Ar
       .filter((t): t is { id: string; name: string } => !!t)
       .sort((a, b) => a.name.localeCompare(b.name));
     const source = prettySenderName(row.original_sender_name, row.original_sender_email);
+    const projectName = one(row.project)?.name ?? null;
     for (const attachment of row.archive_attachments ?? []) {
       results.push({
         id: attachment.id,
@@ -137,6 +169,7 @@ export async function listArchiveAttachmentsByTags(tagIds: string[]): Promise<Ar
         itemId: row.id,
         source,
         folderName: row.drive_folder_name,
+        projectName,
         tags: itemTags,
       });
     }
@@ -150,6 +183,8 @@ export interface ArchiveSearchFilters {
   senderQuery?: string | null;
   /** Matches against the item's title, subject or body. */
   textQuery?: string | null;
+  /** Exact project name (case-insensitive). */
+  projectName?: string | null;
   dateFrom?: string | null;
   dateTo?: string | null;
 }
@@ -165,12 +200,13 @@ export async function searchArchiveAttachments(filters: ArchiveSearchFilters): P
     if (itemIds.length === 0) return [];
   }
 
-  let builder = supabaseAdmin
-    .from('archived_items')
-    .select(
-      'id, original_sender_name, original_sender_email, drive_folder_name, archive_attachments ( id, filename, mime_type, drive_file_id ), archive_item_tags ( tags ( id, name ) )'
-    );
+  let builder = supabaseAdmin.from('archived_items').select(ARCHIVE_SEARCH_ROW_SELECT);
   if (itemIds) builder = builder.in('id', itemIds);
+  if (filters.projectName?.trim()) {
+    const { data: project } = await supabaseAdmin.from('archive_projects').select('id').ilike('name', filters.projectName.trim()).maybeSingle();
+    if (!project) return [];
+    builder = builder.eq('project_id', project.id as string);
+  }
   if (filters.senderQuery?.trim()) {
     const q = filters.senderQuery.trim().replace(/[%_]/g, '\\$&');
     builder = builder.or(
@@ -194,6 +230,7 @@ export async function searchArchiveAttachments(filters: ArchiveSearchFilters): P
       .filter((t): t is { id: string; name: string } => !!t)
       .sort((a, b) => a.name.localeCompare(b.name));
     const source = prettySenderName(row.original_sender_name, row.original_sender_email);
+    const projectName = one(row.project)?.name ?? null;
     for (const attachment of row.archive_attachments ?? []) {
       results.push({
         id: attachment.id,
@@ -203,6 +240,7 @@ export async function searchArchiveAttachments(filters: ArchiveSearchFilters): P
         itemId: row.id,
         source,
         folderName: row.drive_folder_name,
+        projectName,
         tags: itemTags,
       });
     }

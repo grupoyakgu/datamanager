@@ -5,11 +5,17 @@ import { api } from '@/lib/api-client';
 import { useUser } from './use-user';
 import type { ArchiveItemView, ArchiveAttachmentSearchResult, ArchiveTagOption } from '@/types/database';
 
-export function useArchiveItems(q?: string) {
+export function useArchiveItems(q?: string, projectId?: string) {
   const { user } = useUser();
   return useQuery({
-    queryKey: ['archive', q ?? ''],
-    queryFn: () => api.get<ArchiveItemView[]>(`/api/archive${q ? `?q=${encodeURIComponent(q)}` : ''}`),
+    queryKey: ['archive', q ?? '', projectId ?? ''],
+    queryFn: () => {
+      const params = new URLSearchParams();
+      if (q) params.set('q', q);
+      if (projectId) params.set('projectId', projectId);
+      const qs = params.toString();
+      return api.get<ArchiveItemView[]>(`/api/archive${qs ? `?${qs}` : ''}`);
+    },
     enabled: !!user,
   });
 }

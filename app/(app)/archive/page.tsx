@@ -5,8 +5,9 @@ import { RefreshCw } from 'lucide-react';
 import { PageHeader, EmptyState } from '@/components/layout/page-header';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
+import { Select } from '@/components/ui/select';
 import { ArchiveCard } from '@/components/archive/archive-card';
-import { useArchiveItems, useInvalidateArchive } from '@/hooks/use-archive';
+import { useArchiveItems, useArchiveFolderOptions, useInvalidateArchive } from '@/hooks/use-archive';
 import { api } from '@/lib/api-client';
 import { useT } from '@/lib/i18n/context';
 import { cn } from '@/lib/utils';
@@ -16,6 +17,7 @@ export default function ArchivePage() {
   const t = useT();
   const [inputValue, setInputValue] = useState('');
   const [query, setQuery] = useState('');
+  const [projectId, setProjectId] = useState('');
   const invalidate = useInvalidateArchive();
   const [syncing, setSyncing] = useState(false);
   const [syncMessage, setSyncMessage] = useState<string | null>(null);
@@ -25,7 +27,8 @@ export default function ArchivePage() {
     return () => clearTimeout(timer);
   }, [inputValue]);
 
-  const { data: items, isLoading, error } = useArchiveItems(query || undefined);
+  const { data: projectOptions } = useArchiveFolderOptions();
+  const { data: items, isLoading, error } = useArchiveItems(query || undefined, projectId || undefined);
 
   const syncNow = async () => {
     setSyncing(true);
@@ -61,7 +64,22 @@ export default function ArchivePage() {
       />
 
       <div className="space-y-4">
-        <Input value={inputValue} onChange={(e) => setInputValue(e.target.value)} placeholder={t('archive.searchPlaceholder')} />
+        <div className="flex flex-col sm:flex-row gap-2">
+          <Input
+            value={inputValue}
+            onChange={(e) => setInputValue(e.target.value)}
+            placeholder={t('archive.searchPlaceholder')}
+            className="flex-1"
+          />
+          <Select value={projectId} onChange={(e) => setProjectId(e.target.value)} className="sm:w-56">
+            <option value="">{t('archive.project')}: {t('common.all')}</option>
+            {projectOptions?.map((p) => (
+              <option key={p.id} value={p.id}>
+                {p.name}
+              </option>
+            ))}
+          </Select>
+        </div>
 
         {syncMessage && <p className="text-sm text-muted-foreground">{syncMessage}</p>}
         {error && <p className="text-sm text-destructive">{(error as Error).message}</p>}

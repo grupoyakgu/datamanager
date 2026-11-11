@@ -250,6 +250,7 @@ export default function FilesPage() {
         {askResult && (
           <div className="flex items-center gap-3 flex-wrap text-sm mt-2">
             <span className="text-muted-foreground flex flex-wrap items-center gap-1">
+              {askResult.interpreted.projectName && <Badge variant="outline">📁 {askResult.interpreted.projectName}</Badge>}
               {askResult.interpreted.tags.map((tag) => (
                 <Badge key={tag} variant="outline">
                   🏷 {tag}

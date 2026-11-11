@@ -5,6 +5,7 @@ import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { ArrowLeft, Calendar, Mail, Paperclip, Trash2, ExternalLink, AlertTriangle, Pencil, Send } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -264,6 +265,7 @@ export default function ArchiveDetailPage({ params }: { params: Promise<{ id: st
               </div>
 
               <div className="pt-2 border-t border-border space-y-1.5">
+                <Row label={t('archive.project')} value={item.project?.name ?? t('archive.noProject')} />
                 <div className="flex items-center justify-between gap-3">
                   <span className="text-muted-foreground">{t('archive.driveFolder')}</span>
                   <span className="text-right truncate">{item.drive_folder_name ?? '—'}</span>
@@ -275,6 +277,38 @@ export default function ArchiveDetailPage({ params }: { params: Promise<{ id: st
                   onMove={(folderName) => moveFolder.mutate({ id: item.id, folderName })}
                 />
               </div>
+
+              {item.ai_metadata &&
+                (item.ai_metadata.documentType ||
+                  item.ai_metadata.topic ||
+                  item.ai_metadata.people.length > 0 ||
+                  item.ai_metadata.companies.length > 0 ||
+                  item.ai_metadata.documentDate ||
+                  item.ai_metadata.keywords.length > 0) && (
+                  <div className="pt-2 border-t border-border space-y-1">
+                    <span className="text-muted-foreground" title={t('archive.aiMetadataHint')}>
+                      {t('archive.aiMetadata')}
+                    </span>
+                    {item.ai_metadata.documentType && <Row label={t('archive.documentType')} value={item.ai_metadata.documentType} />}
+                    {item.ai_metadata.topic && <Row label={t('archive.topic')} value={item.ai_metadata.topic} />}
+                    {item.ai_metadata.people.length > 0 && <Row label={t('archive.people')} value={item.ai_metadata.people.join(', ')} />}
+                    {item.ai_metadata.companies.length > 0 && (
+                      <Row label={t('archive.companies')} value={item.ai_metadata.companies.join(', ')} />
+                    )}
+                    {item.ai_metadata.documentDate && (
+                      <Row label={t('archive.documentDate')} value={formatDate(item.ai_metadata.documentDate) ?? item.ai_metadata.documentDate} />
+                    )}
+                    {item.ai_metadata.keywords.length > 0 && (
+                      <div className="flex flex-wrap gap-1 pt-1">
+                        {item.ai_metadata.keywords.map((k) => (
+                          <Badge key={k} variant="outline" className="text-[11px]">
+                            {k}
+                          </Badge>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                )}
 
               {item.attachments.length > 0 && (
                 <div className="pt-2 border-t border-border space-y-1">

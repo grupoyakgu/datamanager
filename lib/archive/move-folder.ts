@@ -1,20 +1,20 @@
 import { getSupabaseAdmin } from '@/lib/supabase';
-import { ensureFolder, ensureDomainReaderAccess, setDocParents } from '@/lib/google/drive';
+import { setDocParents } from '@/lib/google/drive';
 import { getArchiveMailboxUser } from './sync';
-import { getArchiveDriveRootId } from './folder-rules';
+import { resolveArchiveDestination } from './folder-rules';
+import { resolveOrCreateProject } from './projects';
+import { ensureDomainReaderAccess } from '@/lib/google/drive';
 
 /**
- * Move an archived item's attachments to a different Drive folder (existing
- * or newly created, found-or-created by name under the "archive" root), and
- * remember that exact sender's email for next time — an "email"-type rule
- * always wins over the domain default (see resolveArchiveFolderId), so
- * later emails from this same address land here automatically instead of
- * back in "Temp". Used both for the gmail.com/"Temp" triage flow and as a
- * general-purpose re-file action.
+ * (Re)assign an archived item to a project — moving its attachments into
+ * archive / <project> / <sender-domain subfolder, if configured>, same
+ * destination logic as normal ingestion (see resolveArchiveDestination).
+ * Used both to resolve the "needs a project" flag (no "tags:" line found)
+ * and as a general-purpose re-file action.
  */
-export async function moveArchiveItemToFolder(archivedItemId: string, folderName: string): Promise<{ id: string; name: string }> {
-  const trimmed = folderName.trim();
-  if (!trimmed) throw new Error('folderName is required');
+export async function moveArchiveItemToFolder(archivedItemId: string, projectName: string): Promise<{ id: string; name: string }> {
+  const trimmed = projectName.trim();
+  if (!trimmed) throw new Error('projectName is required');
 
   const mailboxUser = await getArchiveMailboxUser();
   if (!mailboxUser) throw new Error('The archive mailbox is not connected yet.');
@@ -27,15 +27,7 @@ export async function moveArchiveItemToFolder(archivedItemId: string, folderName
     .maybeSingle();
   if (!item) throw new Error('Archived item not found');
 
-  const root = await getArchiveDriveRootId(mailboxUser.id);
-  const folderId = await ensureFolder(mailboxUser.id, root, trimmed);
-
-  try {
-    const domain = mailboxUser.email.split('@')[1];
-    if (domain) await ensureDomainReaderAccess(mailboxUser.id, folderId, domain);
-  } catch (shareError) {
-    console.error('Failed to grant domain access on archive folder', folderId, shareError);
-  }
+  const destination = await resolveArchiveDestination(mailboxUser.id, trimmed, item.original_sender_email as string | null);
 
   const { data: attachments } = await supabaseAdmin
     .from('archive_attachments')
@@ -44,40 +36,33 @@ export async function moveArchiveItemToFolder(archivedItemId: string, folderName
   for (const attachment of attachments ?? []) {
     if (!attachment.drive_file_id) continue;
     try {
-      await setDocParents(mailboxUser.id, attachment.drive_file_id, [folderId]);
+      await setDocParents(mailboxUser.id, attachment.drive_file_id, [destination.folderId]);
     } catch (moveError) {
-      console.error('Failed to move archive attachment', attachment.drive_file_id, 'to', trimmed, moveError);
+      console.error('Failed to move archive attachment', attachment.drive_file_id, 'to', destination.folderName, moveError);
     }
   }
 
-  await supabaseAdmin.from('archived_items').update({ drive_folder_name: trimmed }).eq('id', archivedItemId);
+  await supabaseAdmin
+    .from('archived_items')
+    .update({ project_id: destination.projectId, drive_folder_name: destination.folderName })
+    .eq('id', archivedItemId);
 
-  const senderEmail = item.original_sender_email as string | null;
-  if (senderEmail) {
-    const { error } = await supabaseAdmin
-      .from('archive_folder_rules')
-      .upsert(
-        { pattern: senderEmail.toLowerCase(), pattern_type: 'email', drive_folder_id: folderId, drive_folder_name: trimmed },
-        { onConflict: 'pattern' }
-      );
-    if (error) console.error('Failed to persist email folder rule after move', senderEmail, error);
-  }
-
-  return { id: folderId, name: trimmed };
+  return { id: destination.folderId, name: destination.folderName };
 }
 
 /**
- * Move a single Drive file to a different folder (existing or newly
- * created) under the archive root. If the file is a known attachment of an
- * archived item, delegates to moveArchiveItemToFolder so the item's
- * drive_folder_name and sender rule stay consistent with its other
- * attachments. Otherwise it's a plain Drive move with no DB record to
- * update — e.g. a file an admin uploaded directly, outside the Archive
- * pipeline. Used by the Files page to relocate anything shown there.
+ * Move a single Drive file to a project folder (existing or newly created,
+ * directly under the archive root — no sender-domain subfolder, since a raw
+ * file has no associated sender). If the file is a known attachment of an
+ * archived item, delegates to moveArchiveItemToFolder so the item's project
+ * and folder name stay consistent with its other attachments. Otherwise
+ * it's a plain Drive move with no DB record to update — e.g. a file an
+ * admin uploaded directly, outside the Archive pipeline. Used by the Files
+ * page to relocate anything shown there.
  */
-export async function moveDriveFileToFolder(fileId: string, folderName: string): Promise<{ id: string; name: string }> {
-  const trimmed = folderName.trim();
-  if (!trimmed) throw new Error('folderName is required');
+export async function moveDriveFileToFolder(fileId: string, projectName: string): Promise<{ id: string; name: string }> {
+  const trimmed = projectName.trim();
+  if (!trimmed) throw new Error('projectName is required');
 
   const supabaseAdmin = getSupabaseAdmin();
   const { data: attachment } = await supabaseAdmin
@@ -92,17 +77,16 @@ export async function moveDriveFileToFolder(fileId: string, folderName: string):
   const mailboxUser = await getArchiveMailboxUser();
   if (!mailboxUser) throw new Error('The archive mailbox is not connected yet.');
 
-  const root = await getArchiveDriveRootId(mailboxUser.id);
-  const folderId = await ensureFolder(mailboxUser.id, root, trimmed);
+  const project = await resolveOrCreateProject(mailboxUser.id, trimmed);
 
   try {
     const domain = mailboxUser.email.split('@')[1];
-    if (domain) await ensureDomainReaderAccess(mailboxUser.id, folderId, domain);
+    if (domain) await ensureDomainReaderAccess(mailboxUser.id, project.drive_folder_id, domain);
   } catch (shareError) {
-    console.error('Failed to grant domain access on archive folder', folderId, shareError);
+    console.error('Failed to grant domain access on archive folder', project.drive_folder_id, shareError);
   }
 
-  await setDocParents(mailboxUser.id, fileId, [folderId]);
+  await setDocParents(mailboxUser.id, fileId, [project.drive_folder_id]);
 
-  return { id: folderId, name: trimmed };
+  return { id: project.drive_folder_id, name: project.drive_folder_name };
 }

@@ -3,7 +3,7 @@
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { api } from '@/lib/api-client';
 import type { AppSettings } from '@/lib/settings';
-import type { User, ArchiveFolderRule, SummaryFolderRule } from '@/types/database';
+import type { User, ArchiveProject, ArchiveSenderDomain, SummaryFolderRule } from '@/types/database';
 
 export interface AdminUser extends User {
   connection: { status: string; last_sync_at: string | null; last_error: string | null; scopes: string[] } | null;
@@ -17,18 +17,18 @@ export function useSettings() {
   return useQuery({ queryKey: ['admin-settings'], queryFn: () => api.get<AppSettings>('/api/admin/settings') });
 }
 
-export function useArchiveFolderRules() {
+export function useArchiveSenderDomains() {
   return useQuery({
-    queryKey: ['archive-folder-rules'],
-    queryFn: () => api.get<ArchiveFolderRule[]>('/api/admin/archive-folder-rules'),
+    queryKey: ['archive-sender-domains'],
+    queryFn: () => api.get<ArchiveSenderDomain[]>('/api/admin/archive-sender-domains'),
   });
 }
 
-/** Folders directly under the Archive Drive root (repo@'s own Drive) — used to populate the folder-rule picker. */
-export function useArchiveDriveFolders() {
+/** Projects (auto-created from senders' "tags:project_name" line) — listed here just so an admin can rename their display folder name. */
+export function useArchiveProjectsAdmin() {
   return useQuery({
-    queryKey: ['archive-drive-folders'],
-    queryFn: () => api.get<{ id: string; name: string }[]>('/api/admin/archive-drive-folders'),
+    queryKey: ['archive-projects-admin'],
+    queryFn: () => api.get<ArchiveProject[]>('/api/admin/archive-projects'),
   });
 }
 

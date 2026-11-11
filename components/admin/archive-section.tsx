@@ -6,12 +6,11 @@ import { RefreshCw, Trash2, Pencil, Check, X } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { Select } from '@/components/ui/select';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { api } from '@/lib/api-client';
 import { useT } from '@/lib/i18n/context';
 import { useInvalidateArchive } from '@/hooks/use-archive';
-import { useAdminUsers, useSettings, useArchiveFolderRules, useArchiveDriveFolders, useInvalidateAdmin, splitList } from './use-admin';
+import { useAdminUsers, useSettings, useArchiveSenderDomains, useArchiveProjectsAdmin, useInvalidateAdmin, splitList } from './use-admin';
 import { GmailStatusBadge } from './users-section';
 import { cn } from '@/lib/utils';
 import type { ArchiveSyncResult, SummarySyncResult } from '@/lib/mailbox-sync';
@@ -20,8 +19,8 @@ export function ArchiveSection() {
   const t = useT();
   const { data: users } = useAdminUsers();
   const { data: settings } = useSettings();
-  const { data: folderRules } = useArchiveFolderRules();
-  const { data: driveFolders } = useArchiveDriveFolders();
+  const { data: senderDomains } = useArchiveSenderDomains();
+  const { data: projects } = useArchiveProjectsAdmin();
   const invalidateAdmin = useInvalidateAdmin();
   const invalidateArchive = useInvalidateArchive();
   const queryClient = useQueryClient();
@@ -33,25 +32,22 @@ export function ArchiveSection() {
   const [syncing, setSyncing] = useState(false);
   const [syncResult, setSyncResult] = useState<{ archive: ArchiveSyncResult; summaries: SummarySyncResult } | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const [rulePattern, setRulePattern] = useState('');
-  const [ruleFolderId, setRuleFolderId] = useState('');
-  const [addingRule, setAddingRule] = useState(false);
-  const [ruleError, setRuleError] = useState<string | null>(null);
-  const [newFolderName, setNewFolderName] = useState('');
-  const [creatingFolder, setCreatingFolder] = useState(false);
-  const [createdFolders, setCreatedFolders] = useState<{ id: string; name: string }[]>([]);
-  const [editingRuleId, setEditingRuleId] = useState<string | null>(null);
-  const [editRuleName, setEditRuleName] = useState('');
-  const [savingRuleName, setSavingRuleName] = useState(false);
+  const [domainInput, setDomainInput] = useState('');
+  const [domainFolderInput, setDomainFolderInput] = useState('');
+  const [addingDomain, setAddingDomain] = useState(false);
+  const [domainError, setDomainError] = useState<string | null>(null);
+  const [editingDomainId, setEditingDomainId] = useState<string | null>(null);
+  const [editDomainFolderName, setEditDomainFolderName] = useState('');
+  const [savingDomainName, setSavingDomainName] = useState(false);
+  const [editingProjectId, setEditingProjectId] = useState<string | null>(null);
+  const [editProjectName, setEditProjectName] = useState('');
+  const [savingProjectName, setSavingProjectName] = useState(false);
+  const [projectError, setProjectError] = useState<string | null>(null);
   const [clearing, setClearing] = useState(false);
   const [clearError, setClearError] = useState<string | null>(null);
   const [clearResult, setClearResult] = useState<string | null>(null);
 
   const mailboxUser = users?.find((u) => u.email.toLowerCase() === (settings?.archive_mailbox ?? '').toLowerCase());
-  const mailboxConnected = mailboxUser?.gmail_status === 'connected';
-  // Folders just created in this session, in case the archive-drive-folders
-  // list hasn't refetched yet — kept out of the dropdown once it has.
-  const folderOptions = [...(driveFolders ?? []), ...createdFolders.filter((cf) => !driveFolders?.some((f) => f.id === cf.id))];
 
   const save = async () => {
     setStatus(null);
@@ -88,51 +84,63 @@ export function ArchiveSection() {
     }
   };
 
-  const addRule = async () => {
-    setRuleError(null);
-    const targetFolder = folderOptions.find((f) => f.id === ruleFolderId);
-    if (!rulePattern.trim() || !targetFolder) return;
-    setAddingRule(true);
+  const addDomain = async () => {
+    setDomainError(null);
+    const domain = domainInput.trim();
+    const folderName = domainFolderInput.trim();
+    if (!domain || !folderName) return;
+    setAddingDomain(true);
     try {
-      await api.post('/api/admin/archive-folder-rules', {
-        pattern: rulePattern.trim(),
-        driveFolderId: targetFolder.id,
-        driveFolderName: targetFolder.name,
-      });
-      invalidateAdmin('archive-folder-rules');
-      setRulePattern('');
-      setRuleFolderId('');
+      await api.post('/api/admin/archive-sender-domains', { domain, folderName });
+      invalidateAdmin('archive-sender-domains');
+      setDomainInput('');
+      setDomainFolderInput('');
     } catch (err) {
-      setRuleError(err instanceof Error ? err.message : t('common.error'));
+      setDomainError(err instanceof Error ? err.message : t('common.error'));
     } finally {
-      setAddingRule(false);
+      setAddingDomain(false);
     }
   };
 
-  const deleteRule = async (id: string) => {
-    setRuleError(null);
+  const deleteDomain = async (id: string) => {
+    setDomainError(null);
     try {
-      await api.delete(`/api/admin/archive-folder-rules/${id}`);
-      invalidateAdmin('archive-folder-rules');
+      await api.delete(`/api/admin/archive-sender-domains/${id}`);
+      invalidateAdmin('archive-sender-domains');
     } catch (err) {
-      setRuleError(err instanceof Error ? err.message : t('common.error'));
+      setDomainError(err instanceof Error ? err.message : t('common.error'));
     }
   };
 
-  const saveRuleName = async (id: string) => {
-    const name = editRuleName.trim();
+  const saveDomainFolderName = async (id: string) => {
+    const name = editDomainFolderName.trim();
     if (!name) return;
-    setRuleError(null);
-    setSavingRuleName(true);
+    setDomainError(null);
+    setSavingDomainName(true);
     try {
-      await api.patch(`/api/admin/archive-folder-rules/${id}`, { driveFolderName: name });
-      invalidateAdmin('archive-folder-rules');
-      invalidateAdmin('archive-drive-folders');
-      setEditingRuleId(null);
+      await api.patch(`/api/admin/archive-sender-domains/${id}`, { folderName: name });
+      invalidateAdmin('archive-sender-domains');
+      setEditingDomainId(null);
     } catch (err) {
-      setRuleError(err instanceof Error ? err.message : t('common.error'));
+      setDomainError(err instanceof Error ? err.message : t('common.error'));
     } finally {
-      setSavingRuleName(false);
+      setSavingDomainName(false);
+    }
+  };
+
+  const saveProjectName = async (id: string) => {
+    const name = editProjectName.trim();
+    if (!name) return;
+    setProjectError(null);
+    setSavingProjectName(true);
+    try {
+      await api.patch(`/api/admin/archive-projects/${id}`, { driveFolderName: name });
+      invalidateAdmin('archive-projects-admin');
+      setEditingProjectId(null);
+    } catch (err) {
+      setProjectError(err instanceof Error ? err.message : t('common.error'));
+    } finally {
+      setSavingProjectName(false);
     }
   };
 
@@ -142,39 +150,20 @@ export function ArchiveSection() {
     setClearError(null);
     setClearResult(null);
     try {
-      const result = await api.post<{ deleted: number; filesDeleted: number; tagsDeleted: number; rulesCleared: number }>(
+      const result = await api.post<{ deleted: number; filesDeleted: number; tagsDeleted: number; projectsCleared: number }>(
         '/api/admin/archive/clear'
       );
       setClearResult(
-        `${result.deleted} ${t('admin.archiveClearDeleted')}, ${result.filesDeleted} ${t('admin.archiveClearFilesDeleted')}, ${result.tagsDeleted} ${t('admin.archiveClearTagsDeleted')}, ${result.rulesCleared} ${t('admin.archiveClearRulesCleared')}`
+        `${result.deleted} ${t('admin.archiveClearDeleted')}, ${result.filesDeleted} ${t('admin.archiveClearFilesDeleted')}, ${result.tagsDeleted} ${t('admin.archiveClearTagsDeleted')}, ${result.projectsCleared} ${t('admin.archiveClearProjectsCleared')}`
       );
       invalidateArchive();
       queryClient.invalidateQueries({ queryKey: ['drive'] });
       queryClient.invalidateQueries({ queryKey: ['tags'] });
-      invalidateAdmin('archive-folder-rules');
-      invalidateAdmin('archive-drive-folders');
+      invalidateAdmin('archive-projects-admin');
     } catch (err) {
       setClearError(err instanceof Error ? err.message : t('common.error'));
     } finally {
       setClearing(false);
-    }
-  };
-
-  const createFolder = async () => {
-    setRuleError(null);
-    const name = newFolderName.trim();
-    if (!name) return;
-    setCreatingFolder(true);
-    try {
-      const created = await api.post<{ id: string; name: string }>('/api/admin/archive-drive-folders', { name });
-      setCreatedFolders((prev) => [...prev, created]);
-      setRuleFolderId(created.id);
-      setNewFolderName('');
-      invalidateAdmin('archive-drive-folders');
-    } catch (err) {
-      setRuleError(err instanceof Error ? err.message : t('common.error'));
-    } finally {
-      setCreatingFolder(false);
     }
   };
 
@@ -232,51 +221,53 @@ export function ArchiveSection() {
 
       <Card>
         <CardHeader>
-          <CardTitle>{t('admin.archiveFolderRules')}</CardTitle>
-          <p className="text-sm text-muted-foreground">{t('admin.archiveFolderRulesHint')}</p>
+          <CardTitle>{t('admin.archiveSenderDomains')}</CardTitle>
+          <p className="text-sm text-muted-foreground">{t('admin.archiveSenderDomainsHint')}</p>
         </CardHeader>
         <CardContent className="space-y-4 max-w-2xl">
-          {!mailboxConnected && (
-            <p className="text-sm text-amber-600 dark:text-amber-400">{t('admin.archiveFolderRulesNeedsConnection')}</p>
-          )}
-          {ruleError && <p className="text-sm text-destructive">{ruleError}</p>}
+          {domainError && <p className="text-sm text-destructive">{domainError}</p>}
           <div className="space-y-2">
-            {(folderRules ?? []).length === 0 && (
-              <p className="text-sm text-muted-foreground">{t('admin.archiveFolderRulesEmpty')}</p>
+            {(senderDomains ?? []).length === 0 && (
+              <p className="text-sm text-muted-foreground">{t('admin.archiveSenderDomainsEmpty')}</p>
             )}
-            {folderRules?.map((rule) => (
-              <div key={rule.id} className="flex items-center gap-2 rounded-md border bg-card px-3 py-2 text-sm">
-                <span className="font-medium truncate">{rule.pattern}</span>
+            {senderDomains?.map((d) => (
+              <div key={d.id} className="flex items-center gap-2 rounded-md border bg-card px-3 py-2 text-sm">
+                <span className="font-medium truncate">{d.domain}</span>
                 <span className="text-muted-foreground">→</span>
-                {editingRuleId === rule.id ? (
+                {editingDomainId === d.id ? (
                   <>
                     <Input
-                      value={editRuleName}
-                      onChange={(e) => setEditRuleName(e.target.value)}
+                      value={editDomainFolderName}
+                      onChange={(e) => setEditDomainFolderName(e.target.value)}
                       className="h-8 max-w-[14rem]"
                       autoFocus
                     />
-                    <Button size="sm" variant="ghost" onClick={() => saveRuleName(rule.id)} disabled={savingRuleName || !editRuleName.trim()}>
+                    <Button
+                      size="sm"
+                      variant="ghost"
+                      onClick={() => saveDomainFolderName(d.id)}
+                      disabled={savingDomainName || !editDomainFolderName.trim()}
+                    >
                       <Check size={16} />
                     </Button>
-                    <Button size="sm" variant="ghost" onClick={() => setEditingRuleId(null)}>
+                    <Button size="sm" variant="ghost" onClick={() => setEditingDomainId(null)}>
                       <X size={16} />
                     </Button>
                   </>
                 ) : (
                   <>
-                    <span className="truncate">{rule.drive_folder_name}</span>
+                    <span className="truncate">{d.folder_name}</span>
                     <Button
                       size="sm"
                       variant="ghost"
                       onClick={() => {
-                        setEditingRuleId(rule.id);
-                        setEditRuleName(rule.drive_folder_name);
+                        setEditingDomainId(d.id);
+                        setEditDomainFolderName(d.folder_name);
                       }}
                     >
                       <Pencil size={16} />
                     </Button>
-                    <Button size="sm" variant="ghost" className="ml-auto text-destructive" onClick={() => deleteRule(rule.id)}>
+                    <Button size="sm" variant="ghost" className="ml-auto text-destructive" onClick={() => deleteDomain(d.id)}>
                       <Trash2 size={16} />
                     </Button>
                   </>
@@ -285,37 +276,67 @@ export function ArchiveSection() {
             ))}
           </div>
           <div className="grid grid-cols-1 sm:grid-cols-[1fr_1fr_auto] gap-2">
+            <Input value={domainInput} onChange={(e) => setDomainInput(e.target.value)} placeholder={t('admin.archiveDomainPlaceholder')} />
             <Input
-              value={rulePattern}
-              onChange={(e) => setRulePattern(e.target.value)}
-              placeholder={t('admin.archiveRulePatternPlaceholder')}
+              value={domainFolderInput}
+              onChange={(e) => setDomainFolderInput(e.target.value)}
+              placeholder={t('admin.archiveDomainFolderPlaceholder')}
             />
-            <Select value={ruleFolderId} onChange={(e) => setRuleFolderId(e.target.value)}>
-              <option value="">{t('admin.archiveRuleFolderPlaceholder')}</option>
-              <option value="__new__">{t('admin.createNewFolder')}</option>
-              {folderOptions.map((f) => (
-                <option key={f.id} value={f.id}>
-                  {f.name}
-                </option>
-              ))}
-            </Select>
-            <Button onClick={addRule} disabled={addingRule || !rulePattern.trim() || !ruleFolderId || ruleFolderId === '__new__'}>
-              {addingRule ? t('common.loading') : t('admin.addRule')}
+            <Button onClick={addDomain} disabled={addingDomain || !domainInput.trim() || !domainFolderInput.trim()}>
+              {addingDomain ? t('common.loading') : t('admin.addDomain')}
             </Button>
           </div>
-          {ruleFolderId === '__new__' && (
-            <div className="flex gap-2">
-              <Input
-                value={newFolderName}
-                onChange={(e) => setNewFolderName(e.target.value)}
-                placeholder={t('admin.newFolderNamePlaceholder')}
-                autoFocus
-              />
-              <Button type="button" variant="outline" onClick={createFolder} disabled={creatingFolder || !newFolderName.trim()}>
-                {creatingFolder ? t('common.loading') : t('common.create')}
-              </Button>
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader>
+          <CardTitle>{t('admin.archiveProjects')}</CardTitle>
+          <p className="text-sm text-muted-foreground">{t('admin.archiveProjectsHint')}</p>
+        </CardHeader>
+        <CardContent className="space-y-2 max-w-2xl">
+          {projectError && <p className="text-sm text-destructive">{projectError}</p>}
+          {(projects ?? []).length === 0 && <p className="text-sm text-muted-foreground">{t('admin.archiveProjectsEmpty')}</p>}
+          {projects?.map((p) => (
+            <div key={p.id} className="flex items-center gap-2 rounded-md border bg-card px-3 py-2 text-sm">
+              {editingProjectId === p.id ? (
+                <>
+                  <Input
+                    value={editProjectName}
+                    onChange={(e) => setEditProjectName(e.target.value)}
+                    className="h-8 max-w-[14rem]"
+                    autoFocus
+                  />
+                  <Button
+                    size="sm"
+                    variant="ghost"
+                    onClick={() => saveProjectName(p.id)}
+                    disabled={savingProjectName || !editProjectName.trim()}
+                  >
+                    <Check size={16} />
+                  </Button>
+                  <Button size="sm" variant="ghost" onClick={() => setEditingProjectId(null)}>
+                    <X size={16} />
+                  </Button>
+                </>
+              ) : (
+                <>
+                  <span className="truncate">{p.drive_folder_name}</span>
+                  <Button
+                    size="sm"
+                    variant="ghost"
+                    className="ml-auto"
+                    onClick={() => {
+                      setEditingProjectId(p.id);
+                      setEditProjectName(p.drive_folder_name);
+                    }}
+                  >
+                    <Pencil size={16} />
+                  </Button>
+                </>
+              )}
             </div>
-          )}
+          ))}
         </CardContent>
       </Card>
 

@@ -1,11 +1,14 @@
 import { getSupabaseAdmin } from '@/lib/supabase';
 import { getSettings } from '@/lib/settings';
-import { trashMessage, type GmailMessage } from '@/lib/google/gmail';
+import { trashMessage, sendEmail, type GmailMessage } from '@/lib/google/gmail';
 import { GoogleAuthError } from '@/lib/google/oauth';
 import { findOrCreateTagsByName } from '@/lib/summaries/repository';
 import { splitExtension } from '@/lib/summaries/drive-export';
 import { parseAddress, parseForward, parseInlineTags } from './parse-forward';
 import { exportArchiveAttachments } from './drive-export';
+import { resolveOrCreateProject } from './projects';
+import { createReviewToken } from './review-tokens';
+import { extractArchiveMetadata } from '@/lib/ai/archive-metadata';
 
 /** Drop attachments whose extension is on the admin-configured exclude list (e.g. png). */
 export function filterExcludedAttachments<T extends { filename: string }>(attachments: T[], excludedExtensions: string[]): T[] {
@@ -73,10 +76,17 @@ async function allAttachmentsSynced(archivedItemId: string): Promise<boolean> {
  * a one-way "save" action. If any attachment still failed to upload, the
  * email is left in place so a later sync can retry it.
  *
- * Tags it ONLY with whatever the sender declared themselves via a
- * "tags:a, b" line in the body (see parseInlineTags) — these can create
- * brand-new tags (findOrCreateTagsByName). No content-based AI/keyword
- * detection is applied; an email with no "tags:" line gets no tags.
+ * The sender's own "tags:project_name,a,b" line (see parseInlineTags) names
+ * the destination project (first value — mandatory, see below) plus any
+ * further values as plain searchable metadata tags (can create brand-new
+ * tags via findOrCreateTagsByName). Separately, AI-generated metadata
+ * (document type, topic, people/companies, date, keywords) is extracted
+ * from the subject/body/sender/filenames and stored apart from those
+ * manually-declared tags (archive_ai_metadata) — text-based only, not the
+ * attachment file contents themselves. An email with no "tags:" line at all
+ * has no project to route by, so it's flagged for review (shared "Temp"
+ * folder) and the original sender is emailed a one-time link to assign one
+ * themselves, rather than being silently filed anywhere.
  *
  * Attachments whose extension is on the admin-configured exclude list (e.g.
  * png, for inline signature images) are dropped entirely — never saved to
@@ -127,16 +137,91 @@ export async function ingestArchiveMessage(
   const archivedItemId = inserted.id as string;
   let readyToDelete = true;
 
+  // The first "tags:" value names the project (mandatory — its absence is
+  // flagged below, not silently ignored); any further values are plain
+  // searchable metadata tags, same mechanism as before.
+  const allTagNames = parseInlineTags(message.bodyText);
+  const projectName = allTagNames[0] ?? null;
+  const metadataTagNames = allTagNames.slice(1);
+
   try {
-    const inlineTagNames = parseInlineTags(message.bodyText);
-    const tagIds = inlineTagNames.length > 0 ? (await findOrCreateTagsByName(inlineTagNames)).map((t) => t.id) : [];
-    if (tagIds.length > 0) {
-      await supabaseAdmin
-        .from('archive_item_tags')
-        .insert(tagIds.map((tagId) => ({ archived_item_id: archivedItemId, tag_id: tagId })));
+    if (metadataTagNames.length > 0) {
+      const tagIds = (await findOrCreateTagsByName(metadataTagNames)).map((t) => t.id);
+      if (tagIds.length > 0) {
+        await supabaseAdmin
+          .from('archive_item_tags')
+          .insert(tagIds.map((tagId) => ({ archived_item_id: archivedItemId, tag_id: tagId })));
+      }
     }
   } catch (tagError) {
     console.error('Tag parsing failed for archived item', archivedItemId, tagError);
+  }
+
+  if (projectName) {
+    try {
+      const project = await resolveOrCreateProject(mailboxUserId, projectName);
+      await supabaseAdmin.from('archived_items').update({ project_id: project.id }).eq('id', archivedItemId);
+    } catch (projectError) {
+      console.error('Failed to resolve project for archived item', archivedItemId, projectName, projectError);
+    }
+  } else {
+    // No "tags:" line at all — flag for manual review (files to a shared
+    // "Temp" folder, see drive-export.ts) instead of silently guessing, and
+    // ask the original sender to pick the right project themselves via a
+    // one-time link, since they likely have no account in this system.
+    console.error('No project tag found for archived item', archivedItemId, '— flagged for review');
+    if (originalSenderEmail) {
+      try {
+        const token = await createReviewToken(archivedItemId);
+        const baseUrl = process.env.NEXT_PUBLIC_APP_URL;
+        if (baseUrl) {
+          await sendEmail(mailboxUserId, {
+            to: [originalSenderEmail],
+            subject: `Action needed: which project does "${subject}" belong to?`,
+            text: [
+              `Hi${originalSenderName ? ` ${originalSenderName}` : ''},`,
+              '',
+              `We received your email "${subject}" but couldn't tell which project it belongs to — it didn't include a "tags:project_name" line.`,
+              '',
+              'Please let us know using this link:',
+              `${baseUrl}/archive-review/${token}`,
+              '',
+              'Thanks!',
+            ].join('\n'),
+          });
+        }
+      } catch (notifyError) {
+        console.error('Failed to send missing-project notification for archived item', archivedItemId, notifyError);
+      }
+    }
+  }
+
+  try {
+    const ai = await extractArchiveMetadata({
+      subject,
+      bodyText: message.bodyText,
+      senderEmail: originalSenderEmail,
+      senderName: originalSenderName,
+      filenames: message.attachments.map((a) => a.filename),
+    });
+    await supabaseAdmin.from('archive_ai_metadata').upsert(
+      {
+        archived_item_id: archivedItemId,
+        document_type: ai.documentType,
+        topic: ai.topic,
+        people: ai.people,
+        companies: ai.companies,
+        document_date: ai.documentDate,
+        keywords: ai.keywords,
+        model: ai.model,
+        ai_error: ai.aiError,
+        raw: ai.raw,
+        extracted_at: new Date().toISOString(),
+      },
+      { onConflict: 'archived_item_id' }
+    );
+  } catch (aiError) {
+    console.error('AI metadata extraction failed for archived item', archivedItemId, aiError);
   }
 
   const attachments = filterExcludedAttachments(message.attachments, excludedExtensions);
