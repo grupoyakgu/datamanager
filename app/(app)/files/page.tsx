@@ -2,7 +2,7 @@
 
 import { useMemo, useState, type DragEvent } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { ArrowLeft, Folder, FileText, ExternalLink, ChevronRight, RefreshCw, X } from 'lucide-react';
+import { ArrowLeft, Folder, FileText, ExternalLink, ChevronRight, RefreshCw, X, Trash2, Mail, Upload } from 'lucide-react';
 import { PageHeader, EmptyState } from '@/components/layout/page-header';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
@@ -87,6 +87,8 @@ export default function FilesPage() {
   const [searchNonce, setSearchNonce] = useState(0);
   const [isDragging, setIsDragging] = useState(false);
   const [uploadTasks, setUploadTasks] = useState<UploadTask[]>([]);
+  const [deletingFileId, setDeletingFileId] = useState<string | null>(null);
+  const [deleteError, setDeleteError] = useState<string | null>(null);
 
   const clearAskResult = () => {
     setAskResult(null);
@@ -225,6 +227,25 @@ export default function FilesPage() {
     }
   };
 
+  const handleDeleteFile = async (file: DriveFileWithSource) => {
+    if (!confirm(t('files.confirmDeleteFile'))) return;
+    setDeleteError(null);
+    setDeletingFileId(file.id);
+    try {
+      if (file.archivedItemId) {
+        await api.delete(`/api/archive/${file.archivedItemId}`);
+        invalidateArchive();
+      } else {
+        await api.delete(`/api/drive/files/${file.id}`);
+      }
+      queryClient.invalidateQueries({ queryKey: ['drive'] });
+    } catch (err) {
+      setDeleteError(err instanceof Error ? err.message : t('common.error'));
+    } finally {
+      setDeletingFileId(null);
+    }
+  };
+
   return (
     <div>
       <PageHeader
@@ -238,6 +259,7 @@ export default function FilesPage() {
         }
       />
       {syncMessage && <p className="text-sm text-muted-foreground mb-3">{syncMessage}</p>}
+      {deleteError && <p className="text-sm text-destructive mb-3">{deleteError}</p>}
 
       {archiveTags && archiveTags.length > 0 && (
         <div className="mb-4 space-y-1.5">
@@ -436,6 +458,7 @@ export default function FilesPage() {
                   <TH>{t('common.name')}</TH>
                   <TH className="hidden md:table-cell">{t('files.type')}</TH>
                   <TH className="hidden md:table-cell">{t('files.source')}</TH>
+                  <TH className="hidden lg:table-cell">{t('files.via')}</TH>
                   <TH className="hidden lg:table-cell">{t('files.uploadedBy')}</TH>
                   <TH className="hidden sm:table-cell">{t('files.modified')}</TH>
                   <TH />
@@ -453,6 +476,15 @@ export default function FilesPage() {
                         >
                           <Folder size={16} className="text-amber-500" /> {file.name}
                         </button>
+                      ) : file.webViewLink ? (
+                        <a
+                          href={file.webViewLink}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="inline-flex items-center gap-2 hover:underline"
+                        >
+                          <FileText size={16} className="text-muted-foreground" /> {file.name}
+                        </a>
                       ) : (
                         <span className="inline-flex items-center gap-2">
                           <FileText size={16} className="text-muted-foreground" /> {file.name}
@@ -461,24 +493,40 @@ export default function FilesPage() {
                     </TD>
                     <TD className="hidden md:table-cell text-muted-foreground">{fileTypeLabel(file)}</TD>
                     <TD className="hidden md:table-cell text-muted-foreground">{file.source ?? '—'}</TD>
+                    <TD className="hidden lg:table-cell text-muted-foreground">
+                      {file.ingestSource === 'gmail' ? (
+                        <span className="inline-flex items-center gap-1" title={t('files.viaEmail')}>
+                          <Mail size={14} />
+                        </span>
+                      ) : file.ingestSource === 'manual' ? (
+                        <span className="inline-flex items-center gap-1" title={t('files.viaUpload')}>
+                          <Upload size={14} />
+                        </span>
+                      ) : (
+                        '—'
+                      )}
+                    </TD>
                     <TD className="hidden lg:table-cell text-muted-foreground">{file.uploadedBy ?? '—'}</TD>
                     <TD className="hidden sm:table-cell text-muted-foreground">
                       {new Date(file.emailReceivedAt ?? file.modifiedTime).toLocaleDateString()}
                     </TD>
                     <TD className="text-right">
-                      <div className="flex flex-col items-end gap-1">
+                      <div className="flex items-center justify-end gap-1">
                         {file.webViewLink && (
                           <a
                             href={file.webViewLink}
                             target="_blank"
                             rel="noopener noreferrer"
-                            className="inline-flex items-center gap-1 text-sm text-primary hover:underline"
+                            title={t('files.openInDrive')}
+                            aria-label={t('files.openInDrive')}
+                            className="inline-flex h-9 w-9 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-accent hover:text-accent-foreground"
                           >
-                            {t('files.openInDrive')} <ExternalLink size={14} />
+                            <ExternalLink size={14} />
                           </a>
                         )}
                         {!file.isFolder && (
                           <MoveToFolder
+                            iconOnly
                             currentFolderName={data?.folder?.name ?? data?.rootName ?? null}
                             options={folderOptions ?? []}
                             busy={file.archivedItemId ? moveArchiveItem.isPending : moveDriveFile.isPending}
@@ -488,6 +536,19 @@ export default function FilesPage() {
                                 : moveDriveFile.mutate({ fileId: file.id, folderName })
                             }
                           />
+                        )}
+                        {!file.isFolder && user?.role === 'admin' && (
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            title={t('files.deleteFile')}
+                            aria-label={t('files.deleteFile')}
+                            className="text-destructive hover:text-destructive"
+                            disabled={deletingFileId === file.id}
+                            onClick={() => void handleDeleteFile(file)}
+                          >
+                            <Trash2 size={14} />
+                          </Button>
                         )}
                       </div>
                     </TD>

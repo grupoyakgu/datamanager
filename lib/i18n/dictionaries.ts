@@ -189,6 +189,11 @@ export const en = {
     dropHint: 'Drop to upload to',
     uploading: 'Uploading',
     uploadSaveFailed: 'Uploaded to Drive, but failed to save here — try refreshing.',
+    via: 'Via',
+    viaEmail: 'Received by email',
+    viaUpload: 'Uploaded via drag & drop',
+    deleteFile: 'Delete file',
+    confirmDeleteFile: 'Delete this file from Drive? This cannot be undone.',
   },
   tags: {
     title: 'Tags',
@@ -567,6 +572,11 @@ export const es: DeepStringRecord = {
     dropHint: 'Suelta para subir a',
     uploading: 'Subiendo',
     uploadSaveFailed: 'Se subió a Drive, pero no se pudo guardar aquí — intenta actualizar la página.',
+    via: 'Vía',
+    viaEmail: 'Recibido por correo',
+    viaUpload: 'Subido por arrastre',
+    deleteFile: 'Eliminar archivo',
+    confirmDeleteFile: '¿Eliminar este archivo de Drive? Esto no se puede deshacer.',
   },
   tags: {
     title: 'Etiquetas',
