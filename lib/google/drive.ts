@@ -59,8 +59,8 @@ export async function getFile(userId: string, fileId: string): Promise<DriveFile
   return { ...f, isFolder: f.mimeType === FOLDER_MIME };
 }
 
-/** Find a folder named `name` directly under `parentId`, creating it if missing. */
-export async function ensureFolder(userId: string, parentId: string, name: string): Promise<string> {
+/** Find a folder named `name` directly under `parentId`, or null if there isn't one — never creates it. */
+export async function findFolderIdByName(userId: string, parentId: string, name: string): Promise<string | null> {
   const escaped = name.replace(/'/g, "\\'");
   const q = `'${parentId}' in parents and name = '${escaped}' and mimeType = '${FOLDER_MIME}' and trashed = false`;
   const params = new URLSearchParams({
@@ -71,7 +71,13 @@ export async function ensureFolder(userId: string, parentId: string, name: strin
     includeItemsFromAllDrives: 'true',
   });
   const existing = await googleFetch<{ files: { id: string; name: string }[] }>(userId, `${DRIVE_BASE}/files?${params}`);
-  if (existing.files.length > 0) return existing.files[0].id;
+  return existing.files[0]?.id ?? null;
+}
+
+/** Find a folder named `name` directly under `parentId`, creating it if missing. */
+export async function ensureFolder(userId: string, parentId: string, name: string): Promise<string> {
+  const existingId = await findFolderIdByName(userId, parentId, name);
+  if (existingId) return existingId;
 
   const created = await googleFetch<{ id: string }>(userId, `${DRIVE_BASE}/files?supportsAllDrives=true`, {
     method: 'POST',
