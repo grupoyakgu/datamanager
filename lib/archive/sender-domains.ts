@@ -1,4 +1,4 @@
-import { getSupabaseAdmin } from '@/lib/supabase';
+import { getSupabaseAdmin, isMissingTableError } from '@/lib/supabase';
 import { findFolderIdByName, renameFile } from '@/lib/google/drive';
 import { listArchiveProjects } from './projects';
 import type { ArchiveSenderDomain } from '@/types/database';
@@ -6,7 +6,7 @@ import type { ArchiveSenderDomain } from '@/types/database';
 export async function listSenderDomains(): Promise<ArchiveSenderDomain[]> {
   const { data, error } = await getSupabaseAdmin().from('archive_sender_domains').select('*').order('domain');
   if (error) {
-    if (error.code === '42P01') return [];
+    if (isMissingTableError(error)) return [];
     throw new Error(error.message);
   }
   return (data ?? []) as ArchiveSenderDomain[];
@@ -16,7 +16,7 @@ export async function listSenderDomains(): Promise<ArchiveSenderDomain[]> {
 export async function resolveSenderDomain(domain: string | null): Promise<{ id: string; folderName: string } | null> {
   if (!domain) return null;
   const { data, error } = await getSupabaseAdmin().from('archive_sender_domains').select('id, folder_name').ilike('domain', domain).maybeSingle();
-  if (error && error.code !== '42P01') throw new Error(error.message);
+  if (error && !isMissingTableError(error)) throw new Error(error.message);
   if (!data) return null;
   return { id: data.id as string, folderName: data.folder_name as string };
 }
@@ -34,8 +34,8 @@ export async function recordSenderDomainFolder(senderDomainId: string, projectId
   const { error } = await getSupabaseAdmin()
     .from('archive_sender_domain_folders')
     .upsert({ sender_domain_id: senderDomainId, project_id: projectId, drive_folder_id: driveFolderId }, { onConflict: 'sender_domain_id,project_id' });
-  // 42P01 = relation does not exist — deployed before its migration landed; the name-matching fallback still works without it.
-  if (error && error.code !== '42P01') console.error('Failed to record sender-domain folder mapping', error);
+  // Table not found = deployed before its migration landed; the name-matching fallback still works without it.
+  if (error && !isMissingTableError(error)) console.error('Failed to record sender-domain folder mapping', error);
 }
 
 /**
@@ -87,8 +87,8 @@ export async function renameSenderDomainSubfolders(
     listArchiveProjects(),
     supabaseAdmin.from('archive_sender_domain_folders').select('project_id, drive_folder_id').eq('sender_domain_id', senderDomainId),
   ]);
-  // 42P01 = relation does not exist — deployed before its migration landed; fall back to name-matching for every project.
-  if (trackedResult.error && trackedResult.error.code !== '42P01') throw new Error(trackedResult.error.message);
+  // Table not found = deployed before its migration landed; fall back to name-matching for every project.
+  if (trackedResult.error && !isMissingTableError(trackedResult.error)) throw new Error(trackedResult.error.message);
   const trackedByProject = new Map((trackedResult.data ?? []).map((r) => [r.project_id as string, r.drive_folder_id as string]));
 
   await Promise.all(

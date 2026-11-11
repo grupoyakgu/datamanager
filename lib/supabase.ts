@@ -17,6 +17,19 @@ export const supabase = createClient(supabaseUrl, supabaseAnonKey, {
   auth: { flowType: 'implicit', detectSessionInUrl: true, persistSession: true, autoRefreshToken: true },
 });
 
+/**
+ * True for a "that table doesn't exist" error — e.g. code queries a table
+ * from a migration that hasn't been applied to this project yet. Checks
+ * both codes because the two Supabase query paths report it differently:
+ * PostgREST (the supabase-js client used everywhere in this app) reports
+ * 'PGRST205' ("Could not find the table ... in the schema cache"), while
+ * raw Postgres reports '42P01' (undefined_table) — only relevant code ever
+ * queries the latter directly, but checking it too costs nothing.
+ */
+export function isMissingTableError(error: { code?: string | null } | null | undefined): boolean {
+  return error?.code === 'PGRST205' || error?.code === '42P01';
+}
+
 let adminClient: SupabaseClient | null = null;
 
 /**

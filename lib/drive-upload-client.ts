@@ -5,7 +5,7 @@ function putToUploadUrl(
   body: Blob | null,
   headers: Record<string, string>,
   onProgress?: (pct: number) => void
-): Promise<{ status: number; body: string; range: string | null }> {
+): Promise<{ status: number; body: string }> {
   return new Promise((resolve, reject) => {
     const xhr = new XMLHttpRequest();
     xhr.open('PUT', uploadUrl, true);
@@ -15,27 +15,21 @@ function putToUploadUrl(
         if (e.lengthComputable) onProgress(Math.round((e.loaded / e.total) * 100));
       };
     }
-    xhr.onload = () => resolve({ status: xhr.status, body: xhr.responseText, range: xhr.getResponseHeader('Range') });
+    xhr.onload = () => resolve({ status: xhr.status, body: xhr.responseText });
     xhr.onerror = () => reject(new Error('Network error during upload'));
     xhr.send(body ?? undefined);
   });
 }
 
 /**
- * Asks Google how much of a resumable upload session it actually received.
- * Used after the browser's own PUT errors out — that error can mean the
- * bytes never arrived, but it can just as easily mean they did and only the
- * response was lost in transit, so failing outright would misreport a
- * completed upload as broken.
+ * Asks our own server whether a resumable upload session actually finished
+ * — not Google directly, because the browser's own request to Google is
+ * exactly what just failed, and a CORS failure looks identical to a real
+ * network failure from here with no way to tell them apart. A plain
+ * server-to-server request isn't subject to CORS at all.
  */
-async function checkUploadStatus(uploadUrl: string, totalSize: number): Promise<{ done: true; id: string } | { done: false; bytesReceived: number }> {
-  const { status, body, range } = await putToUploadUrl(uploadUrl, null, { 'Content-Range': `bytes */${totalSize}` });
-  if (status === 200 || status === 201) return { done: true, id: (JSON.parse(body) as { id: string }).id };
-  if (status === 308) {
-    const match = range?.match(/bytes=0-(\d+)/);
-    return { done: false, bytesReceived: match ? Number(match[1]) + 1 : 0 };
-  }
-  throw new Error(`Upload session check failed (${status})`);
+function checkUploadStatus(uploadUrl: string, totalSize: number): Promise<{ done: true; id: string } | { done: false; bytesReceived: number }> {
+  return api.post('/api/drive/files/upload-session/status', { uploadUrl, totalSize });
 }
 
 /**
@@ -47,11 +41,13 @@ async function checkUploadStatus(uploadUrl: string, totalSize: number): Promise<
  * gets real upload-progress events (which a plain `fetch` can't give).
  *
  * A network error on that PUT doesn't necessarily mean the upload failed —
- * Google may have received everything and only the response was lost. On
- * error, the session is checked directly instead of giving up immediately:
- * already complete resolves normally, partially received resumes from
- * where it left off (up to a few times), and only a session that's
- * genuinely gone is reported as a failure.
+ * Google may have received everything and only the response was lost (a
+ * dropped connection, or a CORS quirk on reading the response specifically,
+ * are both indistinguishable from a real failure to the browser). On
+ * error, the session is checked via our own server instead of giving up
+ * immediately: already complete resolves normally, partially received
+ * resumes from where it left off (up to a few times), and only a session
+ * that's genuinely gone is reported as a failure.
  */
 export async function uploadFileToFolder(folderId: string, file: File, onProgress: (pct: number) => void): Promise<{ id: string }> {
   const { uploadUrl } = await api.post<{ uploadUrl: string }>('/api/drive/files/upload-session', {

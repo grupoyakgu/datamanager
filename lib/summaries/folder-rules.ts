@@ -1,4 +1,4 @@
-import { getSupabaseAdmin } from '@/lib/supabase';
+import { getSupabaseAdmin, isMissingTableError } from '@/lib/supabase';
 import { getSettings } from '@/lib/settings';
 import { ensureFolder, ensureDomainReaderAccess } from '@/lib/google/drive';
 import { isGenericEmailDomain, TEMP_FOLDER_NAME } from '@/lib/email-domains';
@@ -7,10 +7,10 @@ import type { SummaryFolderRule } from '@/types/database';
 export async function listSummaryFolderRules(): Promise<SummaryFolderRule[]> {
   const { data, error } = await getSupabaseAdmin().from('summary_folder_rules').select('*').order('pattern');
   if (error) {
-    // 42P01 = relation does not exist — e.g. this code deployed before its
+    // Relation does not exist — e.g. this code deployed before its
     // migration landed. Treat it as "no rules configured" rather than
     // failing every summary export until the migration is applied.
-    if (error.code === '42P01') return [];
+    if (isMissingTableError(error)) return [];
     throw new Error(error.message);
   }
   return (data ?? []) as SummaryFolderRule[];
@@ -119,7 +119,7 @@ export async function resolveSummaryFolderId(
         const { error } = await supabaseAdmin
           .from('summary_folder_rules')
           .insert({ pattern, pattern_type: patternType, drive_folder_id: folderId, drive_folder_name: pattern });
-        if (error && error.code !== '23505' && error.code !== '42P01') {
+        if (error && error.code !== '23505' && !isMissingTableError(error)) {
           console.error('Failed to persist auto-created summary folder rule', pattern, error);
         }
       }

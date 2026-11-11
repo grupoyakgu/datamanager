@@ -1,4 +1,4 @@
-import { getSupabaseAdmin } from '@/lib/supabase';
+import { getSupabaseAdmin, isMissingTableError } from '@/lib/supabase';
 import { ensureFolder, getAncestors, getFile } from '@/lib/google/drive';
 import { getArchiveDriveRootId } from './folder-rules';
 import type { ArchiveProject } from '@/types/database';
@@ -6,8 +6,8 @@ import type { ArchiveProject } from '@/types/database';
 export async function listArchiveProjects(): Promise<ArchiveProject[]> {
   const { data, error } = await getSupabaseAdmin().from('archive_projects').select('*').order('name');
   if (error) {
-    // 42P01 = relation does not exist — deployed before its migration landed.
-    if (error.code === '42P01') return [];
+    // Deployed before its migration landed.
+    if (isMissingTableError(error)) return [];
     throw new Error(error.message);
   }
   return (data ?? []) as ArchiveProject[];

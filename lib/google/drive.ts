@@ -197,6 +197,31 @@ export async function createResumableUploadSession(
   return location;
 }
 
+/**
+ * Asks Google how much of a resumable upload session it actually received.
+ * Run from our own server (not the browser) specifically because this is
+ * the one reliable way to tell the difference between a failed upload and
+ * one that succeeded but whose response the browser's own PUT never got to
+ * read — a plain server-to-server request isn't subject to the CORS
+ * failures that make that distinction unreliable from client-side code.
+ */
+export async function checkResumableUploadStatus(
+  uploadUrl: string,
+  totalSize: number
+): Promise<{ done: true; id: string } | { done: false; bytesReceived: number }> {
+  const response = await fetch(uploadUrl, { method: 'PUT', headers: { 'Content-Range': `bytes */${totalSize}` } });
+  if (response.status === 200 || response.status === 201) {
+    const data = (await response.json()) as { id: string };
+    return { done: true, id: data.id };
+  }
+  if (response.status === 308) {
+    const range = response.headers.get('Range');
+    const match = range?.match(/bytes=0-(\d+)/);
+    return { done: false, bytesReceived: match ? Number(match[1]) + 1 : 0 };
+  }
+  throw new Error(`Upload session check failed (${response.status}): ${(await response.text()).slice(0, 300)}`);
+}
+
 /** Rename a file or folder in place. */
 export async function renameFile(userId: string, fileId: string, name: string): Promise<void> {
   await googleFetch(userId, `${DRIVE_BASE}/files/${fileId}?supportsAllDrives=true`, {
