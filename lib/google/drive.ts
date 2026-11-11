@@ -127,11 +127,15 @@ ${params.text}
  */
 export async function uploadFile(
   userId: string,
-  params: { fileId?: string; name: string; mimeType: string; parents?: string[]; data: Buffer }
+  params: { fileId?: string; name: string; mimeType: string; parents?: string[]; data: Buffer; modifiedTime?: string }
 ): Promise<{ id: string }> {
   const boundary = `driveUpload${Math.random().toString(36).slice(2)}`;
   const metadata: Record<string, unknown> = { name: params.name };
   if (!params.fileId && params.parents) metadata.parents = params.parents;
+  // Lets the Drive file's own "modified" timestamp carry the original
+  // email's send date (set explicitly here) instead of defaulting to
+  // whenever it happened to be uploaded — see exportArchiveAttachments.
+  if (params.modifiedTime) metadata.modifiedTime = params.modifiedTime;
 
   const body = Buffer.concat([
     Buffer.from(`--${boundary}\r\nContent-Type: application/json; charset=UTF-8\r\n\r\n${JSON.stringify(metadata)}\r\n`, 'utf8'),

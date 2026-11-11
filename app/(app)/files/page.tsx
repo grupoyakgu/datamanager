@@ -462,7 +462,9 @@ export default function FilesPage() {
                     <TD className="hidden md:table-cell text-muted-foreground">{fileTypeLabel(file)}</TD>
                     <TD className="hidden md:table-cell text-muted-foreground">{file.source ?? '—'}</TD>
                     <TD className="hidden lg:table-cell text-muted-foreground">{file.uploadedBy ?? '—'}</TD>
-                    <TD className="hidden sm:table-cell text-muted-foreground">{new Date(file.modifiedTime).toLocaleDateString()}</TD>
+                    <TD className="hidden sm:table-cell text-muted-foreground">
+                      {new Date(file.emailReceivedAt ?? file.modifiedTime).toLocaleDateString()}
+                    </TD>
                     <TD className="text-right">
                       <div className="flex flex-col items-end gap-1">
                         {file.webViewLink && (

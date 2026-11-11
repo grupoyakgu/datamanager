@@ -53,7 +53,7 @@ export async function exportArchiveAttachments(archivedItemId: string, ingestedB
   const supabaseAdmin = getSupabaseAdmin();
 
   const [{ data: item }, { data: attachmentRows }] = await Promise.all([
-    supabaseAdmin.from('archived_items').select('original_sender_email, project_id').eq('id', archivedItemId).maybeSingle(),
+    supabaseAdmin.from('archived_items').select('original_sender_email, project_id, email_received_at').eq('id', archivedItemId).maybeSingle(),
     supabaseAdmin
       .from('archive_attachments')
       .select('id, gmail_message_id, gmail_attachment_id, filename, mime_type, drive_file_id')
@@ -96,6 +96,10 @@ export async function exportArchiveAttachments(archivedItemId: string, ingestedB
               mimeType: attachment.mime_type,
               parents: [destination.folderId],
               data,
+              // The file's own "modified" date should reflect when the
+              // source email was actually sent, not whenever this upload
+              // happens to run — never the Drive-upload time as a stand-in.
+              modifiedTime: (item.email_received_at as string | null) ?? undefined,
             })
           ).id;
 
