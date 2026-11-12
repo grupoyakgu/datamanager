@@ -3,7 +3,7 @@
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { api } from '@/lib/api-client';
 import type { AppSettings } from '@/lib/settings';
-import type { User, ArchiveProject, ArchiveSenderDomain, SummaryFolderRule } from '@/types/database';
+import type { User, ArchiveProject, ArchiveSenderDomain, ArchiveClassificationCategory, SummaryFolderRule } from '@/types/database';
 
 export interface AdminUser extends User {
   connection: { status: string; last_sync_at: string | null; last_error: string | null; scopes: string[] } | null;
@@ -29,6 +29,13 @@ export function useArchiveProjectsAdmin() {
   return useQuery({
     queryKey: ['archive-projects-admin'],
     queryFn: () => api.get<ArchiveProject[]>('/api/admin/archive-projects'),
+  });
+}
+
+export function useArchiveClassificationCategories() {
+  return useQuery({
+    queryKey: ['archive-classification-categories'],
+    queryFn: () => api.get<ArchiveClassificationCategory[]>('/api/admin/archive-classification-categories'),
   });
 }
 

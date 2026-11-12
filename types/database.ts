@@ -205,6 +205,13 @@ export interface ArchiveProject {
   created_at: string;
 }
 
+/** An admin-configured category for the AI classification scan to look for — applied to matching archived items as an ordinary tag. */
+export interface ArchiveClassificationCategory {
+  id: string;
+  name: string;
+  created_at: string;
+}
+
 /** Admin-configured sender email domain → subfolder display name, used to file an archived item's
  * attachments under project/<subfolder>. An unconfigured domain files directly under the project. */
 export interface ArchiveSenderDomain {

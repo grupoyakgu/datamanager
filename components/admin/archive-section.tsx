@@ -2,7 +2,7 @@
 
 import { useState } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
-import { RefreshCw, Trash2, Pencil, Check, X } from 'lucide-react';
+import { RefreshCw, Trash2, Pencil, Check, X, Sparkles } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -10,7 +10,15 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { api } from '@/lib/api-client';
 import { useT } from '@/lib/i18n/context';
 import { useInvalidateArchive } from '@/hooks/use-archive';
-import { useAdminUsers, useSettings, useArchiveSenderDomains, useArchiveProjectsAdmin, useInvalidateAdmin, splitList } from './use-admin';
+import {
+  useAdminUsers,
+  useSettings,
+  useArchiveSenderDomains,
+  useArchiveProjectsAdmin,
+  useArchiveClassificationCategories,
+  useInvalidateAdmin,
+  splitList,
+} from './use-admin';
 import { GmailStatusBadge } from './users-section';
 import { cn } from '@/lib/utils';
 import type { ArchiveSyncResult, SummarySyncResult } from '@/lib/mailbox-sync';
@@ -21,6 +29,7 @@ export function ArchiveSection() {
   const { data: settings } = useSettings();
   const { data: senderDomains } = useArchiveSenderDomains();
   const { data: projects } = useArchiveProjectsAdmin();
+  const { data: categories } = useArchiveClassificationCategories();
   const invalidateAdmin = useInvalidateAdmin();
   const invalidateArchive = useInvalidateArchive();
   const queryClient = useQueryClient();
@@ -43,6 +52,12 @@ export function ArchiveSection() {
   const [editProjectName, setEditProjectName] = useState('');
   const [savingProjectName, setSavingProjectName] = useState(false);
   const [projectError, setProjectError] = useState<string | null>(null);
+  const [categoryInput, setCategoryInput] = useState('');
+  const [addingCategory, setAddingCategory] = useState(false);
+  const [categoryError, setCategoryError] = useState<string | null>(null);
+  const [scanning, setScanning] = useState(false);
+  const [scanProgress, setScanProgress] = useState<{ tagged: number; processed: number } | null>(null);
+  const [scanDone, setScanDone] = useState(false);
   const [clearing, setClearing] = useState(false);
   const [clearError, setClearError] = useState<string | null>(null);
   const [clearResult, setClearResult] = useState<string | null>(null);
@@ -141,6 +156,60 @@ export function ArchiveSection() {
       setProjectError(err instanceof Error ? err.message : t('common.error'));
     } finally {
       setSavingProjectName(false);
+    }
+  };
+
+  const addCategory = async () => {
+    setCategoryError(null);
+    const name = categoryInput.trim();
+    if (!name) return;
+    setAddingCategory(true);
+    try {
+      await api.post('/api/admin/archive-classification-categories', { name });
+      invalidateAdmin('archive-classification-categories');
+      setCategoryInput('');
+    } catch (err) {
+      setCategoryError(err instanceof Error ? err.message : t('common.error'));
+    } finally {
+      setAddingCategory(false);
+    }
+  };
+
+  const deleteCategory = async (id: string) => {
+    setCategoryError(null);
+    try {
+      await api.delete(`/api/admin/archive-classification-categories/${id}`);
+      invalidateAdmin('archive-classification-categories');
+    } catch (err) {
+      setCategoryError(err instanceof Error ? err.message : t('common.error'));
+    }
+  };
+
+  /** Repeatedly calls the classify endpoint — one batch of items per call — until nothing is left unclassified. */
+  const runClassificationScan = async () => {
+    setScanning(true);
+    setScanDone(false);
+    setCategoryError(null);
+    setScanProgress({ tagged: 0, processed: 0 });
+    try {
+      let remaining = 1;
+      while (remaining > 0) {
+        const result = await api.post<{ processed: number; tagged: number; remaining: number }>('/api/admin/archive/classify');
+        setScanProgress((prev) => ({
+          tagged: (prev?.tagged ?? 0) + result.tagged,
+          processed: (prev?.processed ?? 0) + result.processed,
+        }));
+        remaining = result.remaining;
+        if (result.processed === 0) break;
+      }
+      invalidateArchive();
+      queryClient.invalidateQueries({ queryKey: ['drive'] });
+      queryClient.invalidateQueries({ queryKey: ['tags'] });
+      setScanDone(true);
+    } catch (err) {
+      setCategoryError(err instanceof Error ? err.message : t('common.error'));
+    } finally {
+      setScanning(false);
     }
   };
 
@@ -337,6 +406,50 @@ export function ArchiveSection() {
               )}
             </div>
           ))}
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader>
+          <CardTitle>{t('admin.archiveClassification')}</CardTitle>
+          <p className="text-sm text-muted-foreground">{t('admin.archiveClassificationHint')}</p>
+        </CardHeader>
+        <CardContent className="space-y-4 max-w-2xl">
+          {categoryError && <p className="text-sm text-destructive">{categoryError}</p>}
+          <div className="flex flex-wrap gap-1.5">
+            {(categories ?? []).length === 0 && <p className="text-sm text-muted-foreground">{t('admin.archiveClassificationEmpty')}</p>}
+            {categories?.map((c) => (
+              <span key={c.id} className="inline-flex items-center gap-1.5 rounded-full border bg-card px-2.5 py-1 text-xs">
+                {c.name}
+                <button
+                  type="button"
+                  onClick={() => deleteCategory(c.id)}
+                  className="text-muted-foreground hover:text-destructive"
+                  aria-label={t('common.remove')}
+                >
+                  <X size={12} />
+                </button>
+              </span>
+            ))}
+          </div>
+          <div className="flex gap-2">
+            <Input value={categoryInput} onChange={(e) => setCategoryInput(e.target.value)} placeholder={t('admin.archiveCategoryPlaceholder')} />
+            <Button onClick={addCategory} disabled={addingCategory || !categoryInput.trim()}>
+              {addingCategory ? t('common.loading') : t('admin.addCategory')}
+            </Button>
+          </div>
+          <div className="pt-2 border-t border-border space-y-2">
+            <Button variant="outline" onClick={runClassificationScan} disabled={scanning}>
+              <Sparkles size={16} className={cn('mr-1', scanning && 'animate-pulse')} />
+              {scanning ? t('admin.classificationScanRunning') : t('admin.runClassificationScan')}
+            </Button>
+            {scanProgress && (
+              <p className="text-sm text-muted-foreground">
+                {scanProgress.processed} {t('admin.scanned')} — {scanProgress.tagged} {t('admin.classificationTagged')}
+                {scanDone ? '' : '…'}
+              </p>
+            )}
+          </div>
         </CardContent>
       </Card>
 
