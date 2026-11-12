@@ -104,13 +104,13 @@ export default function FilesPage() {
   const [uploadTasks, setUploadTasks] = useState<UploadTask[]>([]);
   const [deletingFileId, setDeletingFileId] = useState<string | null>(null);
   const [deleteError, setDeleteError] = useState<string | null>(null);
-  const [selectedItemId, setSelectedItemId] = useState<string | null>(null);
-  // Separate from selectedItemId: several files (an email's several
-  // attachments) can share one archived item, so highlighting by item id
-  // would light up every row in that group no matter which one was
-  // actually clicked — tracking the specific Drive file id instead
-  // highlights only that row.
-  const [selectedFileId, setSelectedFileId] = useState<string | null>(null);
+  // itemId drives what the side panel fetches/displays; fileId drives which
+  // single row is highlighted. Kept as one object set in one call (instead
+  // of two separate useState calls each set individually) so the two can
+  // never briefly disagree — several files (an email's several attachments)
+  // can share one archived item, so highlighting by item id alone would
+  // light up every row in that group no matter which one was clicked.
+  const [selected, setSelected] = useState<{ itemId: string; fileId: string } | null>(null);
 
   const clearAskResult = () => {
     setAskResult(null);
@@ -490,7 +490,7 @@ export default function FilesPage() {
               </THead>
               <TBody>
                 {data.files.map((file) => {
-                  const isSelected = file.id === selectedFileId;
+                  const isSelected = file.id === selected?.fileId;
                   return (
                   <TR
                     key={file.id}
@@ -562,10 +562,7 @@ export default function FilesPage() {
                             size="sm"
                             title={t('files.metadataTags')}
                             aria-label={t('files.metadataTags')}
-                            onClick={() => {
-                              setSelectedItemId(file.archivedItemId);
-                              setSelectedFileId(file.id);
-                            }}
+                            onClick={() => setSelected({ itemId: file.archivedItemId!, fileId: file.id })}
                           >
                             <TagIcon size={14} />
                           </Button>
@@ -605,14 +602,11 @@ export default function FilesPage() {
             </Table>
           )}
         </div>
-        {selectedItemId && (
+        {selected && (
           <div className="w-full lg:w-96 lg:shrink-0">
             <ArchiveDetailPanel
-              itemId={selectedItemId}
-              onClose={() => {
-                setSelectedItemId(null);
-                setSelectedFileId(null);
-              }}
+              itemId={selected.itemId}
+              onClose={() => setSelected(null)}
             />
           </div>
         )}
