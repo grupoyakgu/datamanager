@@ -112,6 +112,18 @@ export default function FilesPage() {
   // light up every row in that group no matter which one was clicked.
   const [selected, setSelected] = useState<{ itemId: string; fileId: string } | null>(null);
 
+  // The panel shows one specific file's data — navigating to a different
+  // folder means that file is no longer even in view, so keeping the panel
+  // open would show stale, out-of-context data next to an unrelated table.
+  // Called from both ways folderId changes (breadcrumb and opening a
+  // folder) instead of a useEffect keyed on it, per React's own guidance
+  // against calling setState from inside an effect for state deriving from
+  // a prop/state change that already has an event to hook into.
+  const navigateToFolder = (id: string | null) => {
+    setFolderId(id);
+    setSelected(null);
+  };
+
   const clearAskResult = () => {
     setAskResult(null);
     setAskError(null);
@@ -436,7 +448,7 @@ export default function FilesPage() {
                 {isLast ? (
                   <span className="font-medium">{c.name}</span>
                 ) : (
-                  <button type="button" className="hover:underline text-muted-foreground" onClick={() => setFolderId(c.id)}>
+                  <button type="button" className="hover:underline text-muted-foreground" onClick={() => navigateToFolder(c.id)}>
                     {c.name}
                   </button>
                 )}
@@ -507,7 +519,7 @@ export default function FilesPage() {
                         <button
                           type="button"
                           className="inline-flex items-center gap-2 hover:underline text-left"
-                          onClick={() => setFolderId(file.id)}
+                          onClick={() => navigateToFolder(file.id)}
                         >
                           <Folder size={16} className="text-amber-500" /> {file.name}
                         </button>

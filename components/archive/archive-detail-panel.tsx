@@ -69,8 +69,9 @@ export function ArchiveDetailPanel({ itemId, onClose }: ArchiveDetailPanelProps)
   return (
     <div className="h-fit overflow-hidden rounded-lg border">
       <div className="flex items-center justify-between gap-2 border-b bg-muted/50 px-4 py-2.5">
-        <h3 className="min-w-0 truncate text-sm font-medium" title={item?.title}>
-          {item?.title ?? t('common.loading')}
+        {/* The email's subject, not item.title — title is the forwarder's own typed note when there is one, which can end up being nothing but their "tags:" line (as happened here), making a poor window heading. */}
+        <h3 className="min-w-0 truncate text-sm font-medium" title={item?.subject}>
+          {item?.subject ?? t('common.loading')}
         </h3>
         <button
           type="button"
