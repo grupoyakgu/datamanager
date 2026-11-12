@@ -108,6 +108,12 @@ export async function ingestArchiveMessage(
   const originalSenderEmail = parsed.isForward ? parsed.originalSenderEmail : forwardedBy.email;
   const subject = (parsed.isForward ? parsed.originalSubject : null) || message.subject || 'Untitled';
   const title = parsed.forwarderNote?.trim() ? parsed.forwarderNote.trim().slice(0, 200) : subject;
+  // On a forward, the date that matters is when the original sender sent
+  // it, not when it was forwarded to the archive mailbox (message.date) —
+  // those can differ by anything from minutes to months. Falls back to
+  // message.date when the original "Date:" header wasn't found or didn't
+  // parse (e.g. a non-Gmail or localized format).
+  const emailDate = (parsed.isForward ? parsed.originalDate : null) ?? message.date;
 
   // The first "tags:" value names the project — mandatory. Checked before
   // anything is written to the database: without one there is nothing to
@@ -172,7 +178,7 @@ export async function ingestArchiveMessage(
       forwarded_by_email: parsed.isForward ? forwardedBy.email : null,
       gmail_message_id: message.id,
       message_id_header: message.messageIdHeader,
-      email_received_at: message.date,
+      email_received_at: emailDate,
       ingested_by: mailboxUserId,
     })
     .select('id')

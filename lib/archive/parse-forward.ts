@@ -7,6 +7,8 @@ export interface ParsedForward {
   originalSenderName: string | null;
   originalSenderEmail: string | null;
   originalSubject: string | null;
+  /** The original message's own send time (its "Date:" header), as an ISO string — not when it was forwarded. Null when absent or unparseable. */
+  originalDate: string | null;
   /**
    * The original message, starting at its own "From:" header line (so the
    * forwarder's own preamble and the "---------- Forwarded message
@@ -24,6 +26,7 @@ const NOT_A_FORWARD: ParsedForward = {
   originalSenderName: null,
   originalSenderEmail: null,
   originalSubject: null,
+  originalDate: null,
   forwardedBody: null,
 };
 
@@ -43,6 +46,14 @@ export function parseAddress(raw: string): { name: string | null; email: string 
 const FORWARD_MARKER = /^-{2,}\s*(forwarded message|mensaje reenviado|הודעה שהועברה)\s*-{2,}\s*$/im;
 const FROM_LINE = /^\s*(?:from|de|מאת)\s*:\s*(.+)$/im;
 const SUBJECT_LINE = /^\s*(?:subject|asunto|נושא)\s*:\s*(.+)$/im;
+const DATE_LINE = /^\s*(?:date|fecha|תאריך)\s*:\s*(.+)$/im;
+
+/** Parses a quoted "Date:" header's raw text (e.g. "Mon, 10 Nov 2025 09:15:00 -0500") into an ISO string, or null if missing or unparseable (e.g. a localized format JS's Date constructor doesn't understand). */
+function parseHeaderDate(raw: string | undefined): string | null {
+  if (!raw) return null;
+  const parsed = new Date(raw.trim());
+  return Number.isNaN(parsed.getTime()) ? null : parsed.toISOString();
+}
 
 /** Deterministic parse of Gmail's default forward format, no AI required. */
 export function parseForwardHeuristic(bodyText: string): ParsedForward {
@@ -53,6 +64,7 @@ export function parseForwardHeuristic(bodyText: string): ParsedForward {
   const headerBlock = bodyText.slice(marker.index + marker[0].length, marker.index + marker[0].length + 1000);
   const fromMatch = headerBlock.match(FROM_LINE);
   const subjectMatch = headerBlock.match(SUBJECT_LINE);
+  const dateMatch = headerBlock.match(DATE_LINE);
   const address = fromMatch ? parseAddress(fromMatch[1]) : { name: null, email: null };
 
   return {
@@ -61,6 +73,7 @@ export function parseForwardHeuristic(bodyText: string): ParsedForward {
     originalSenderName: address.name,
     originalSenderEmail: address.email,
     originalSubject: subjectMatch ? subjectMatch[1].trim() : null,
+    originalDate: parseHeaderDate(dateMatch?.[1]),
     forwardedBody: bodyText.slice(marker.index + marker[0].length).trimStart() || null,
   };
 }
@@ -83,7 +96,8 @@ Return ONLY a JSON object with keys:
 - original_sender_name: the original sender's display name from the quoted message header, or null.
 - original_sender_email: the original sender's email address from the quoted message header, or null.
 - original_subject: the original message's subject line if shown, or null.
-If is_forward is false, return null for the other four fields.`;
+- original_date: the original message's own send date/time from its quoted header, exactly as written, or null if not shown.
+If is_forward is false, return null for the other five fields.`;
 
   try {
     const raw = await generateJson(system, bodyText.slice(0, 6000));
@@ -101,6 +115,7 @@ If is_forward is false, return null for the other four fields.`;
           : heuristic.originalSenderEmail,
       originalSubject:
         typeof raw.original_subject === 'string' && raw.original_subject.trim() ? raw.original_subject.trim() : heuristic.originalSubject,
+      originalDate: typeof raw.original_date === 'string' ? (parseHeaderDate(raw.original_date) ?? heuristic.originalDate) : heuristic.originalDate,
       forwardedBody: heuristic.forwardedBody,
     };
   } catch (error) {
