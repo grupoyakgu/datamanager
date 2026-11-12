@@ -105,6 +105,12 @@ export default function FilesPage() {
   const [deletingFileId, setDeletingFileId] = useState<string | null>(null);
   const [deleteError, setDeleteError] = useState<string | null>(null);
   const [selectedItemId, setSelectedItemId] = useState<string | null>(null);
+  // Separate from selectedItemId: several files (an email's several
+  // attachments) can share one archived item, so highlighting by item id
+  // would light up every row in that group no matter which one was
+  // actually clicked — tracking the specific Drive file id instead
+  // highlights only that row.
+  const [selectedFileId, setSelectedFileId] = useState<string | null>(null);
 
   const clearAskResult = () => {
     setAskResult(null);
@@ -484,7 +490,7 @@ export default function FilesPage() {
               </THead>
               <TBody>
                 {data.files.map((file) => {
-                  const isSelected = !!file.archivedItemId && file.archivedItemId === selectedItemId;
+                  const isSelected = file.id === selectedFileId;
                   return (
                   <TR
                     key={file.id}
@@ -556,7 +562,10 @@ export default function FilesPage() {
                             size="sm"
                             title={t('files.metadataTags')}
                             aria-label={t('files.metadataTags')}
-                            onClick={() => setSelectedItemId(file.archivedItemId)}
+                            onClick={() => {
+                              setSelectedItemId(file.archivedItemId);
+                              setSelectedFileId(file.id);
+                            }}
                           >
                             <TagIcon size={14} />
                           </Button>
@@ -598,7 +607,13 @@ export default function FilesPage() {
         </div>
         {selectedItemId && (
           <div className="w-full lg:w-96 lg:shrink-0">
-            <ArchiveDetailPanel itemId={selectedItemId} onClose={() => setSelectedItemId(null)} />
+            <ArchiveDetailPanel
+              itemId={selectedItemId}
+              onClose={() => {
+                setSelectedItemId(null);
+                setSelectedFileId(null);
+              }}
+            />
           </div>
         )}
         </div>
