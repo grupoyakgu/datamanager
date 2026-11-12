@@ -3,7 +3,6 @@
 import { useState } from 'react';
 import Link from 'next/link';
 import { X, Paperclip, ExternalLink } from 'lucide-react';
-import { Card, CardContent } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Label } from '@/components/ui/label';
@@ -68,9 +67,9 @@ export function ArchiveDetailPanel({ itemId, onClose }: ArchiveDetailPanelProps)
   };
 
   return (
-    <Card className="h-fit">
-      <div className="flex items-start justify-between gap-2 p-4 pb-0">
-        <h3 className="min-w-0 truncate text-sm font-semibold" title={item?.title}>
+    <div className="h-fit overflow-hidden rounded-lg border">
+      <div className="flex items-center justify-between gap-2 border-b bg-muted/50 px-4 py-2.5">
+        <h3 className="min-w-0 truncate text-sm font-medium" title={item?.title}>
           {item?.title ?? t('common.loading')}
         </h3>
         <button
@@ -82,7 +81,7 @@ export function ArchiveDetailPanel({ itemId, onClose }: ArchiveDetailPanelProps)
           <X size={16} />
         </button>
       </div>
-      <CardContent className="pt-3 text-sm space-y-2">
+      <div className="p-4 text-sm space-y-2">
         {isLoading ? (
           <p className="text-muted-foreground">{t('common.loading')}</p>
         ) : error || !item ? (
@@ -199,8 +198,8 @@ export function ArchiveDetailPanel({ itemId, onClose }: ArchiveDetailPanelProps)
             {errorMsg && <p className="text-xs text-destructive pt-2">{errorMsg}</p>}
           </>
         )}
-      </CardContent>
-    </Card>
+      </div>
+    </div>
   );
 }
 
