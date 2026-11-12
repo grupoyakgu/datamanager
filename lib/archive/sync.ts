@@ -115,20 +115,27 @@ export async function ingestArchiveMessage(
   const allTagNames = parseInlineTags(message.bodyText);
   const projectName = allTagNames[0] ?? null;
   if (!projectName) {
-    if (originalSenderEmail) {
+    // Reply to whoever actually sent this message TO the archive mailbox —
+    // the forwarder, not the original sender. On a forward, the original
+    // sender is an outside party with no idea this archiving system or its
+    // "tags:" convention even exists; it's the forwarder who needs to
+    // resend with one. (On a direct, non-forwarded email these are the
+    // same person anyway.) forwardedBy comes straight off the message's own
+    // From header, so unlike originalSenderEmail it's practically never missing.
+    if (forwardedBy.email) {
       try {
         await sendEmail(mailboxUserId, {
-          to: [originalSenderEmail],
+          to: [forwardedBy.email],
           subject: `Action needed / Acción requerida: "${subject}"`,
           text: [
-            `Hi${originalSenderName ? ` ${originalSenderName}` : ''},`,
+            `Hi${forwardedBy.name ? ` ${forwardedBy.name}` : ''},`,
             '',
             `We received your email "${subject}" but it didn't include a "tags:project_name" line, so we don't know which project it belongs to.`,
             'Please resend it with a line such as "tags:project_name" (for example, "tags:bds36") so we can archive it.',
             '',
             '— — —',
             '',
-            `Hola${originalSenderName ? ` ${originalSenderName}` : ''},`,
+            `Hola${forwardedBy.name ? ` ${forwardedBy.name}` : ''},`,
             '',
             `Recibimos tu correo "${subject}", pero no incluía una línea "tags:nombre_proyecto", así que no sabemos a qué proyecto pertenece.`,
             'Por favor, reenvíalo con una línea como "tags:nombre_proyecto" (por ejemplo, "tags:bds36") para poder archivarlo.',
