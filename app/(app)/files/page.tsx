@@ -420,6 +420,24 @@ export default function FilesPage() {
           </Table>
         )
       ) : (
+        <>
+        <nav className="flex items-center flex-wrap gap-1 text-sm mb-4">
+          {crumbs.map((c, i) => {
+            const isLast = i === crumbs.length - 1;
+            return (
+              <span key={c.id ?? 'root'} className="flex items-center gap-1">
+                {i > 0 && <ChevronRight size={14} className="text-muted-foreground" />}
+                {isLast ? (
+                  <span className="font-medium">{c.name}</span>
+                ) : (
+                  <button type="button" className="hover:underline text-muted-foreground" onClick={() => setFolderId(c.id)}>
+                    {c.name}
+                  </button>
+                )}
+              </span>
+            );
+          })}
+        </nav>
         <div className="flex flex-col gap-4 lg:flex-row lg:items-start">
         <div
           className="relative min-w-0 flex-1"
@@ -440,23 +458,6 @@ export default function FilesPage() {
               </p>
             </div>
           )}
-          <nav className="flex items-center flex-wrap gap-1 text-sm mb-4">
-            {crumbs.map((c, i) => {
-              const isLast = i === crumbs.length - 1;
-              return (
-                <span key={c.id ?? 'root'} className="flex items-center gap-1">
-                  {i > 0 && <ChevronRight size={14} className="text-muted-foreground" />}
-                  {isLast ? (
-                    <span className="font-medium">{c.name}</span>
-                  ) : (
-                    <button type="button" className="hover:underline text-muted-foreground" onClick={() => setFolderId(c.id)}>
-                      {c.name}
-                    </button>
-                  )}
-                </span>
-              );
-            })}
-          </nav>
 
           {notConnected ? (
             <EmptyState>{t('files.notConnected')}</EmptyState>
@@ -483,7 +484,7 @@ export default function FilesPage() {
               </THead>
               <TBody>
                 {data.files.map((file) => (
-                  <TR key={file.id}>
+                  <TR key={file.id} className={cn(file.archivedItemId && file.archivedItemId === selectedItemId && 'bg-accent')}>
                     <TD>
                       {file.isFolder ? (
                         <button
@@ -592,6 +593,7 @@ export default function FilesPage() {
           </div>
         )}
         </div>
+        </>
       )}
       <UploadProgressPanel tasks={uploadTasks} onDismiss={() => setUploadTasks([])} />
     </div>
