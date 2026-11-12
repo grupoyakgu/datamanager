@@ -494,10 +494,13 @@ export default function FilesPage() {
                   return (
                   <TR
                     key={file.id}
-                    className={cn(
-                      'border-l-4',
-                      isSelected ? 'border-l-primary bg-primary/20 hover:bg-primary/25' : 'border-l-transparent'
-                    )}
+                    className={cn(isSelected && 'bg-primary/20 hover:bg-primary/25')}
+                    // Inline, not a border-l-* class: TBody resets every
+                    // border on the last row ([&_tr:last-child]:border-0),
+                    // and that rule's higher specificity silently stripped
+                    // this same highlight off only the last row. An inline
+                    // style always wins over that, regardless of position.
+                    style={{ borderLeft: isSelected ? '4px solid var(--primary)' : '4px solid transparent' }}
                   >
                     <TD>
                       {file.isFolder ? (
