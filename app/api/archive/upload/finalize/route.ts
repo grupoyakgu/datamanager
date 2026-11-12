@@ -6,7 +6,6 @@ import { getSupabaseAdmin } from '@/lib/supabase';
 import { getFile } from '@/lib/google/drive';
 import { getArchiveMailboxUser } from '@/lib/archive/sync';
 import { resolveProjectForFolder } from '@/lib/archive/projects';
-import { extractArchiveMetadata } from '@/lib/ai/archive-metadata';
 import { getArchiveItemById } from '@/lib/archive/repository';
 
 export const dynamic = 'force-dynamic';
@@ -73,33 +72,11 @@ export const POST = handleRoute(async (request: Request) => {
   );
   if (attachmentError) throw new Error(attachmentError.message);
 
-  try {
-    const ai = await extractArchiveMetadata({
-      subject: title,
-      bodyText: '',
-      senderEmail: user.email,
-      senderName: user.name,
-      filenames: files.map((f) => f.name),
-    });
-    await supabaseAdmin.from('archive_ai_metadata').upsert(
-      {
-        archived_item_id: archivedItemId,
-        document_type: ai.documentType,
-        topic: ai.topic,
-        people: ai.people,
-        companies: ai.companies,
-        document_date: ai.documentDate,
-        keywords: ai.keywords,
-        model: ai.model,
-        ai_error: ai.aiError,
-        raw: ai.raw,
-        extracted_at: new Date().toISOString(),
-      },
-      { onConflict: 'archived_item_id' }
-    );
-  } catch (aiError) {
-    console.error('AI metadata extraction failed for manually uploaded item', archivedItemId, aiError);
-  }
+  // No AI metadata/keyword extraction here, unlike an emailed item — a
+  // drag-and-dropped file has no email body for the AI to read in the
+  // first place, and more to the point, a manual upload should only ever
+  // carry tags the uploader actually added themselves (via the item's tag
+  // editor), never AI-suggested ones standing in for them.
 
   await logAudit(user.id, 'archive.uploaded', 'archived_item', archivedItemId, { files: files.map((f) => f.name) });
 
