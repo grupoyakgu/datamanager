@@ -1,6 +1,6 @@
 'use client';
 
-import { useMemo, useState, type DragEvent } from 'react';
+import { useMemo, useRef, useState, type DragEvent } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { ArrowLeft, Folder, FileText, ExternalLink, ChevronRight, RefreshCw, X, Trash2, Mail, Upload, Tag as TagIcon } from 'lucide-react';
 import { PageHeader, EmptyState } from '@/components/layout/page-header';
@@ -94,6 +94,13 @@ export default function FilesPage() {
   const [folderId, setFolderId] = useState<string | null>(null);
   const [selectedTagIds, setSelectedTagIds] = useState<string[]>([]);
   const [tagQuery, setTagQuery] = useState('');
+  // Tags the AI found related in meaning to tagQuery (synonyms, translations,
+  // associated concepts) — not substring matches, which tagSearchResults
+  // already covers client-side. Debounced via a plain timer ref (rather
+  // than a useEffect keyed on tagQuery) so typing doesn't fire a request
+  // per keystroke.
+  const [aiTagSuggestions, setAiTagSuggestions] = useState<{ id: string; name: string }[]>([]);
+  const aiTagSearchTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [syncing, setSyncing] = useState(false);
   const [syncMessage, setSyncMessage] = useState<string | null>(null);
   const [askResult, setAskResult] = useState<{ results: ArchiveAttachmentSearchResult[]; interpreted: ParsedArchiveQuery } | null>(null);
@@ -146,6 +153,28 @@ export default function FilesPage() {
     if (!q) return [];
     return (archiveTags ?? []).filter((t) => !selectedTagIds.includes(t.id) && t.name.toLowerCase().includes(q)).slice(0, 8);
   }, [archiveTags, selectedTagIds, tagQuery]);
+  const aiOnlySuggestions = useMemo(() => {
+    const substringMatchIds = new Set(tagSearchResults.map((t) => t.id));
+    return aiTagSuggestions.filter((t) => !substringMatchIds.has(t.id) && !selectedTagIds.includes(t.id));
+  }, [aiTagSuggestions, tagSearchResults, selectedTagIds]);
+
+  const onTagQueryChange = (value: string) => {
+    setTagQuery(value);
+    if (aiTagSearchTimer.current) clearTimeout(aiTagSearchTimer.current);
+    const q = value.trim();
+    if (!q) {
+      setAiTagSuggestions([]);
+      return;
+    }
+    aiTagSearchTimer.current = setTimeout(async () => {
+      try {
+        const result = await api.post<{ tags: { id: string; name: string }[] }>('/api/archive/tags/similar', { query: q });
+        setAiTagSuggestions(result.tags);
+      } catch {
+        setAiTagSuggestions([]);
+      }
+    }, 500);
+  };
 
   const { data, isLoading, error } = useQuery({
     queryKey: ['drive', folderId ?? 'root'],
@@ -165,6 +194,7 @@ export default function FilesPage() {
   const addTag = (tagId: string) => {
     setSelectedTagIds((prev) => (prev.includes(tagId) ? prev : [...prev, tagId]));
     setTagQuery('');
+    setAiTagSuggestions([]);
     setAskResult(null);
   };
   const removeTag = (tagId: string) => setSelectedTagIds((prev) => prev.filter((id) => id !== tagId));
@@ -328,12 +358,12 @@ export default function FilesPage() {
           <div className="relative max-w-xs">
             <Input
               value={tagQuery}
-              onChange={(e) => setTagQuery(e.target.value)}
+              onChange={(e) => onTagQueryChange(e.target.value)}
               placeholder={t('files.searchTagsPlaceholder')}
               className="h-8 text-xs"
             />
-            {tagSearchResults.length > 0 && (
-              <div className="absolute z-10 mt-1 w-full rounded-md border bg-card shadow-md max-h-48 overflow-auto">
+            {(tagSearchResults.length > 0 || aiOnlySuggestions.length > 0) && (
+              <div className="absolute z-10 mt-1 w-full rounded-md border bg-card shadow-md max-h-56 overflow-auto">
                 {tagSearchResults.map((tag) => (
                   <button
                     key={tag.id}
@@ -344,6 +374,23 @@ export default function FilesPage() {
                     {tag.name}
                   </button>
                 ))}
+                {aiOnlySuggestions.length > 0 && (
+                  <>
+                    <div className="px-3 pt-1.5 pb-1 text-[10px] font-medium uppercase tracking-wide text-muted-foreground border-t">
+                      {t('files.aiSuggestedTags')}
+                    </div>
+                    {aiOnlySuggestions.map((tag) => (
+                      <button
+                        key={tag.id}
+                        type="button"
+                        onClick={() => addTag(tag.id)}
+                        className="block w-full text-left px-3 py-1.5 text-xs hover:bg-accent"
+                      >
+                        {tag.name}
+                      </button>
+                    ))}
+                  </>
+                )}
               </div>
             )}
           </div>
