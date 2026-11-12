@@ -472,7 +472,6 @@ export default function FilesPage() {
                     <TH className="hidden lg:table-cell">{t('files.uploadedBy')}</TH>
                     <TH className="hidden sm:table-cell">{t('files.modified')}</TH>
                     <TH className="hidden lg:table-cell">{t('files.folder')}</TH>
-                    <TH className="hidden sm:table-cell">{t('summaries.tags')}</TH>
                     <TH />
                   </TR>
                 </THead>
@@ -523,7 +522,6 @@ export default function FilesPage() {
                           {attachment.emailReceivedAt ? new Date(attachment.emailReceivedAt).toLocaleDateString() : '—'}
                         </TD>
                         <TD className="hidden lg:table-cell text-muted-foreground">{attachment.folderName ?? '—'}</TD>
-                        <TD className="hidden sm:table-cell text-muted-foreground">{attachment.tags.map((tag) => tag.name).join(', ')}</TD>
                         <TD className="text-right">
                           <div className="flex items-center justify-end gap-1">
                             {attachment.driveFolderUrl && (
