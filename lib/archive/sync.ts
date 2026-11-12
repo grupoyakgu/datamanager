@@ -126,7 +126,8 @@ export async function ingestArchiveMessage(
       try {
         await sendEmail(mailboxUserId, {
           to: [forwardedBy.email],
-          subject: `Action needed / Acción requerida: "${subject}"`,
+          subject: /^re:/i.test(message.subject) ? message.subject : `Re: ${message.subject}`,
+          inReplyTo: { messageIdHeader: message.messageIdHeader, threadId: message.threadId },
           text: [
             `Hi${forwardedBy.name ? ` ${forwardedBy.name}` : ''},`,
             '',

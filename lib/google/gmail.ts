@@ -140,6 +140,13 @@ export interface OutgoingEmail {
   cc?: string[];
   subject: string;
   text: string;
+  /**
+   * Set to make this a genuine threaded reply — Gmail's own thread (so it
+   * lands in the same conversation instead of starting a new one) plus the
+   * In-Reply-To/References headers mail clients use to thread by — instead
+   * of an unrelated new email that merely mentions the original.
+   */
+  inReplyTo?: { messageIdHeader: string; threadId: string };
 }
 
 function encodeHeader(value: string): string {
@@ -151,6 +158,9 @@ export async function sendEmail(userId: string, email: OutgoingEmail): Promise<{
     `To: ${email.to.join(', ')}`,
     ...(email.cc && email.cc.length > 0 ? [`Cc: ${email.cc.join(', ')}`] : []),
     `Subject: ${encodeHeader(email.subject)}`,
+    ...(email.inReplyTo
+      ? [`In-Reply-To: ${email.inReplyTo.messageIdHeader}`, `References: ${email.inReplyTo.messageIdHeader}`]
+      : []),
     'MIME-Version: 1.0',
     'Content-Type: text/plain; charset="UTF-8"',
     'Content-Transfer-Encoding: base64',
@@ -166,6 +176,6 @@ export async function sendEmail(userId: string, email: OutgoingEmail): Promise<{
   return googleFetch<{ id: string }>(userId, `${GMAIL_BASE}/messages/send`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ raw }),
+    body: JSON.stringify({ raw, ...(email.inReplyTo ? { threadId: email.inReplyTo.threadId } : {}) }),
   });
 }
