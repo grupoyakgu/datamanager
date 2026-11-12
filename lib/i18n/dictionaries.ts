@@ -43,6 +43,7 @@ export const en = {
     retry: 'Retry',
     noResults: 'No results found.',
     clearFilters: 'Clear filters',
+    remove: 'Remove',
   },
   login: {
     welcome: 'Welcome back',
@@ -428,6 +429,7 @@ export const es: DeepStringRecord = {
     retry: 'Reintentar',
     noResults: 'No se encontraron resultados.',
     clearFilters: 'Limpiar filtros',
+    remove: 'Quitar',
   },
   login: {
     welcome: 'Bienvenido de nuevo',
