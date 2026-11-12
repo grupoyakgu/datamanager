@@ -76,17 +76,18 @@ async function allAttachmentsSynced(archivedItemId: string): Promise<boolean> {
  * email is left in place so a later sync can retry it.
  *
  * The sender's own "tags:project_name,a,b" line (see parseInlineTags) names
- * the destination project (first value — mandatory) plus any further values
- * as plain searchable metadata tags (can create brand-new tags via
+ * the destination project (first value) plus any further values as plain
+ * searchable metadata tags (can create brand-new tags via
  * findOrCreateTagsByName). Separately, AI-generated metadata (document
  * type, topic, people/companies, date, keywords) is extracted from the
  * subject/body/sender/filenames and stored apart from those
  * manually-declared tags (archive_ai_metadata) — text-based only, not the
  * attachment file contents themselves. An email with no "tags:" line at all
- * has no project to route by, so nothing is saved for it at all: the
- * original sender gets a reply (in English and Spanish) asking them to
- * resend with a "tags:project_name" line, and the email is trashed so it
- * isn't retried on the next sync.
+ * has no project to route by, so it's still saved — filed under a shared
+ * "Temp" folder (see exportArchiveAttachments's own null-project fallback)
+ * — and the sender (only the one who sent/forwarded it to this mailbox, not
+ * any outside original sender on a forward) gets a reply with a link
+ * straight into the app to move it to the right project themselves.
  *
  * Attachments whose extension is on the admin-configured exclude list (e.g.
  * png, for inline signature images) are dropped entirely — never saved to
@@ -115,55 +116,12 @@ export async function ingestArchiveMessage(
   // parse (e.g. a non-Gmail or localized format).
   const emailDate = (parsed.isForward ? parsed.originalDate : null) ?? message.date;
 
-  // The first "tags:" value names the project — mandatory. Checked before
-  // anything is written to the database: without one there is nothing to
-  // save, so the message is rejected outright rather than filed anywhere.
+  // The first "tags:" value names the project, if there is one at all — not
+  // mandatory any more (see exportArchiveAttachments's Temp-folder fallback
+  // below for when there isn't).
   const allTagNames = parseInlineTags(message.bodyText);
   const projectName = allTagNames[0] ?? null;
-  if (!projectName) {
-    // Reply to whoever actually sent this message TO the archive mailbox —
-    // the forwarder, not the original sender. On a forward, the original
-    // sender is an outside party with no idea this archiving system or its
-    // "tags:" convention even exists; it's the forwarder who needs to
-    // resend with one. (On a direct, non-forwarded email these are the
-    // same person anyway.) forwardedBy comes straight off the message's own
-    // From header, so unlike originalSenderEmail it's practically never missing.
-    if (forwardedBy.email) {
-      try {
-        await sendEmail(mailboxUserId, {
-          to: [forwardedBy.email],
-          subject: /^re:/i.test(message.subject) ? message.subject : `Re: ${message.subject}`,
-          inReplyTo: { messageIdHeader: message.messageIdHeader, threadId: message.threadId },
-          text: [
-            `Hi${forwardedBy.name ? ` ${forwardedBy.name}` : ''},`,
-            '',
-            `We received your email "${subject}" but it didn't include a "tags:project_name" line, so we don't know which project it belongs to.`,
-            'Please resend it with a line such as "tags:project_name" (for example, "tags:bds36") so we can archive it.',
-            '',
-            '— — —',
-            '',
-            `Hola${forwardedBy.name ? ` ${forwardedBy.name}` : ''},`,
-            '',
-            `Recibimos tu correo "${subject}", pero no incluía una línea "tags:nombre_proyecto", así que no sabemos a qué proyecto pertenece.`,
-            'Por favor, reenvíalo con una línea como "tags:nombre_proyecto" (por ejemplo, "tags:bds36") para poder archivarlo.',
-            '',
-            'Thanks! / ¡Gracias!',
-          ].join('\n'),
-        });
-      } catch (notifyError) {
-        console.error('Failed to send missing-project-tag reply for message', message.id, notifyError);
-      }
-    } else {
-      console.error('No project tag and no identifiable sender for message', message.id, '— dropping');
-    }
-    try {
-      await trashMessage(mailboxUserId, message.id);
-    } catch (trashError) {
-      console.error('Failed to trash rejected no-project-tag email', message.id, trashError);
-    }
-    return null;
-  }
-  const metadataTagNames = allTagNames.slice(1);
+  const metadataTagNames = projectName ? allTagNames.slice(1) : [];
 
   const { data: inserted, error } = await supabaseAdmin
     .from('archived_items')
@@ -206,11 +164,48 @@ export async function ingestArchiveMessage(
     console.error('Tag parsing failed for archived item', archivedItemId, tagError);
   }
 
-  try {
-    const project = await resolveOrCreateProject(mailboxUserId, projectName);
-    await supabaseAdmin.from('archived_items').update({ project_id: project.id }).eq('id', archivedItemId);
-  } catch (projectError) {
-    console.error('Failed to resolve project for archived item', archivedItemId, projectName, projectError);
+  if (projectName) {
+    try {
+      const project = await resolveOrCreateProject(mailboxUserId, projectName);
+      await supabaseAdmin.from('archived_items').update({ project_id: project.id }).eq('id', archivedItemId);
+    } catch (projectError) {
+      console.error('Failed to resolve project for archived item', archivedItemId, projectName, projectError);
+    }
+  } else if (forwardedBy.email) {
+    // Reply to whoever actually sent this message TO the archive mailbox —
+    // the forwarder, not the original sender. On a forward, the original
+    // sender is an outside party with no idea this archiving system or its
+    // "tags:" convention even exists; it's the forwarder who needs to move
+    // the file. (On a direct, non-forwarded email these are the same person
+    // anyway.) forwardedBy comes straight off the message's own From header,
+    // so unlike originalSenderEmail it's practically never missing.
+    try {
+      const link = `${process.env.NEXT_PUBLIC_APP_URL}/archive/${archivedItemId}`;
+      await sendEmail(mailboxUserId, {
+        to: [forwardedBy.email],
+        subject: /^re:/i.test(message.subject) ? message.subject : `Re: ${message.subject}`,
+        inReplyTo: { messageIdHeader: message.messageIdHeader, threadId: message.threadId },
+        text: [
+          `Hi${forwardedBy.name ? ` ${forwardedBy.name}` : ''},`,
+          '',
+          `We received your email "${subject}" but it didn't include a "tags:project_name" line, so we filed it in a temporary folder for now.`,
+          `Please open it here and move it to the right project: ${link}`,
+          '',
+          '— — —',
+          '',
+          `Hola${forwardedBy.name ? ` ${forwardedBy.name}` : ''},`,
+          '',
+          `Recibimos tu correo "${subject}", pero no incluía una línea "tags:nombre_proyecto", así que lo guardamos en una carpeta temporal por ahora.`,
+          `Ábrelo aquí y muévelo al proyecto correcto: ${link}`,
+          '',
+          'Thanks! / ¡Gracias!',
+        ].join('\n'),
+      });
+    } catch (notifyError) {
+      console.error('Failed to send no-project-tag notification for archived item', archivedItemId, notifyError);
+    }
+  } else {
+    console.error('No project tag and no identifiable sender for archived item', archivedItemId, '— filed under Temp with no notification');
   }
 
   try {
