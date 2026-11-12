@@ -135,13 +135,14 @@ interface RawArchiveAttachmentSearchRow {
   forwarded_by_email: string | null;
   email_received_at: string | null;
   drive_folder_name: string | null;
+  drive_folder_id: string | null;
   project: { name: string; drive_folder_id: string | null } | { name: string; drive_folder_id: string | null }[] | null;
   archive_attachments: { id: string; filename: string; mime_type: string; drive_file_id: string | null }[] | null;
   archive_item_tags: { tags: { id: string; name: string } | { id: string; name: string }[] | null }[] | null;
 }
 
 const ARCHIVE_SEARCH_ROW_SELECT =
-  'id, source, is_forward, original_sender_name, original_sender_email, forwarded_by_name, forwarded_by_email, email_received_at, drive_folder_name, project:archive_projects ( name, drive_folder_id ), archive_attachments ( id, filename, mime_type, drive_file_id ), archive_item_tags ( tags ( id, name ) )';
+  'id, source, is_forward, original_sender_name, original_sender_email, forwarded_by_name, forwarded_by_email, email_received_at, drive_folder_name, drive_folder_id, project:archive_projects ( name, drive_folder_id ), archive_attachments ( id, filename, mime_type, drive_file_id ), archive_item_tags ( tags ( id, name ) )';
 
 /** Shared by every search path below — maps one archived_items row (with its attachments) to one result row per attachment, mirroring the fields the Files page's own folder-browsing table shows. */
 function toArchiveAttachmentSearchResults(row: RawArchiveAttachmentSearchRow): ArchiveAttachmentSearchResult[] {
@@ -158,7 +159,11 @@ function toArchiveAttachmentSearchResults(row: RawArchiveAttachmentSearchRow): A
     : prettySenderName(row.original_sender_name, row.original_sender_email);
   const project = one(row.project);
   const projectName = project?.name ?? null;
-  const driveFolderId = project?.drive_folder_id ?? null;
+  // The item's own exact folder (which may be a sender-domain subfolder one
+  // level under the project root — see archive_sender_domain_folders) when
+  // it's been recorded; the project's root folder is only a fallback for
+  // rows ingested/moved before drive_folder_id started being tracked.
+  const driveFolderId = row.drive_folder_id ?? project?.drive_folder_id ?? null;
   return (row.archive_attachments ?? []).map((attachment) => ({
     id: attachment.id,
     filename: attachment.filename,

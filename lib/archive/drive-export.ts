@@ -72,7 +72,7 @@ export async function exportArchiveAttachments(archivedItemId: string, ingestedB
   const destination = await resolveUploadDestination(ingestedBy, projectName, item.original_sender_email as string | null);
   await supabaseAdmin
     .from('archived_items')
-    .update({ drive_folder_name: destination.folderName, project_id: destination.projectId })
+    .update({ drive_folder_name: destination.folderName, drive_folder_id: destination.folderId, project_id: destination.projectId })
     .eq('id', archivedItemId);
 
   for (const attachment of attachments) {

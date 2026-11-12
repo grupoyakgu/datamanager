@@ -44,7 +44,7 @@ export async function moveArchiveItemToFolder(archivedItemId: string, projectNam
 
   await supabaseAdmin
     .from('archived_items')
-    .update({ project_id: destination.projectId, drive_folder_name: destination.folderName })
+    .update({ project_id: destination.projectId, drive_folder_name: destination.folderName, drive_folder_id: destination.folderId })
     .eq('id', archivedItemId);
 
   return { id: destination.folderId, name: destination.folderName };
