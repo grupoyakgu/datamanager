@@ -484,7 +484,10 @@ export default function FilesPage() {
               </THead>
               <TBody>
                 {data.files.map((file) => (
-                  <TR key={file.id} className={cn(file.archivedItemId && file.archivedItemId === selectedItemId && 'bg-accent')}>
+                  <TR
+                    key={file.id}
+                    className={cn(file.archivedItemId && file.archivedItemId === selectedItemId && 'bg-primary/10 hover:bg-primary/15')}
+                  >
                     <TD>
                       {file.isFolder ? (
                         <button
