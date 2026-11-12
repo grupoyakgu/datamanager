@@ -1,7 +1,6 @@
 'use client';
 
 import { useMemo, useState, type DragEvent } from 'react';
-import Link from 'next/link';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { ArrowLeft, Folder, FileText, ExternalLink, ChevronRight, RefreshCw, X, Trash2, Mail, Upload, Tag as TagIcon } from 'lucide-react';
 import { PageHeader, EmptyState } from '@/components/layout/page-header';
@@ -13,6 +12,7 @@ import { Table, THead, TBody, TR, TH, TD } from '@/components/ui/table';
 import { SearchBar } from '@/components/summaries/search-bar';
 import { MoveToFolder } from '@/components/shared/move-to-folder';
 import { UploadProgressPanel, type UploadTask } from '@/components/files/upload-progress-panel';
+import { ArchiveDetailPanel } from '@/components/archive/archive-detail-panel';
 import { api, ApiError } from '@/lib/api-client';
 import { uploadFileToFolder } from '@/lib/drive-upload-client';
 import { useUser } from '@/hooks/use-user';
@@ -104,6 +104,7 @@ export default function FilesPage() {
   const [uploadTasks, setUploadTasks] = useState<UploadTask[]>([]);
   const [deletingFileId, setDeletingFileId] = useState<string | null>(null);
   const [deleteError, setDeleteError] = useState<string | null>(null);
+  const [selectedItemId, setSelectedItemId] = useState<string | null>(null);
 
   const clearAskResult = () => {
     setAskResult(null);
@@ -419,8 +420,9 @@ export default function FilesPage() {
           </Table>
         )
       ) : (
+        <div className="flex flex-col gap-4 lg:flex-row lg:items-start">
         <div
-          className="relative"
+          className="relative min-w-0 flex-1"
           onDragOver={(e) => {
             e.preventDefault();
             setIsDragging(true);
@@ -540,16 +542,15 @@ export default function FilesPage() {
                           </a>
                         )}
                         {!file.isFolder && file.archivedItemId && (
-                          <Link
-                            href={`/archive/${file.archivedItemId}`}
-                            target="_blank"
-                            rel="noopener noreferrer"
+                          <Button
+                            variant="ghost"
+                            size="sm"
                             title={t('files.metadataTags')}
                             aria-label={t('files.metadataTags')}
-                            className="inline-flex h-9 w-9 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-accent hover:text-accent-foreground"
+                            onClick={() => setSelectedItemId(file.archivedItemId)}
                           >
                             <TagIcon size={14} />
-                          </Link>
+                          </Button>
                         )}
                         {!file.isFolder && (
                           <MoveToFolder
@@ -584,6 +585,12 @@ export default function FilesPage() {
               </TBody>
             </Table>
           )}
+        </div>
+        {selectedItemId && (
+          <div className="w-full lg:w-96 lg:shrink-0">
+            <ArchiveDetailPanel itemId={selectedItemId} onClose={() => setSelectedItemId(null)} />
+          </div>
+        )}
         </div>
       )}
       <UploadProgressPanel tasks={uploadTasks} onDismiss={() => setUploadTasks([])} />

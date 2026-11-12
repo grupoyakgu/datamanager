@@ -195,6 +195,7 @@ export const en = {
     deleteFile: 'Delete file',
     confirmDeleteFile: 'Delete this file from Drive? This cannot be undone.',
     metadataTags: 'Metadata & tags',
+    openFullDetails: 'Open full details',
   },
   tags: {
     title: 'Tags',
@@ -579,6 +580,7 @@ export const es: DeepStringRecord = {
     deleteFile: 'Eliminar archivo',
     confirmDeleteFile: '¿Eliminar este archivo de Drive? Esto no se puede deshacer.',
     metadataTags: 'Metadatos y etiquetas',
+    openFullDetails: 'Ver detalles completos',
   },
   tags: {
     title: 'Etiquetas',
