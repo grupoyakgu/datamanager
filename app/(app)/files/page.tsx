@@ -483,10 +483,15 @@ export default function FilesPage() {
                 </TR>
               </THead>
               <TBody>
-                {data.files.map((file) => (
+                {data.files.map((file) => {
+                  const isSelected = !!file.archivedItemId && file.archivedItemId === selectedItemId;
+                  return (
                   <TR
                     key={file.id}
-                    className={cn(file.archivedItemId && file.archivedItemId === selectedItemId && 'bg-primary/10 hover:bg-primary/15')}
+                    className={cn(
+                      'border-l-4',
+                      isSelected ? 'border-l-primary bg-primary/20 hover:bg-primary/25' : 'border-l-transparent'
+                    )}
                   >
                     <TD>
                       {file.isFolder ? (
@@ -585,7 +590,8 @@ export default function FilesPage() {
                       </div>
                     </TD>
                   </TR>
-                ))}
+                  );
+                })}
               </TBody>
             </Table>
           )}
