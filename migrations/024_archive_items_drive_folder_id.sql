@@ -10,11 +10,15 @@ ALTER TABLE archived_items ADD COLUMN IF NOT EXISTS drive_folder_id TEXT;
 -- project's own root folder — same resolution order as
 -- resolveArchiveDestination, without needing to call Drive again.
 UPDATE archived_items ai
-SET drive_folder_id = COALESCE(sdf.drive_folder_id, p.drive_folder_id)
-FROM archive_projects p
-LEFT JOIN archive_sender_domains sd
-  ON sd.domain = split_part(lower(ai.original_sender_email), '@', 2)
-LEFT JOIN archive_sender_domain_folders sdf
-  ON sdf.sender_domain_id = sd.id AND sdf.project_id = ai.project_id
-WHERE p.id = ai.project_id
+SET drive_folder_id = sub.folder_id
+FROM (
+  SELECT ai2.id, COALESCE(sdf.drive_folder_id, p.drive_folder_id) AS folder_id
+  FROM archived_items ai2
+  JOIN archive_projects p ON p.id = ai2.project_id
+  LEFT JOIN archive_sender_domains sd
+    ON sd.domain = split_part(lower(ai2.original_sender_email), '@', 2)
+  LEFT JOIN archive_sender_domain_folders sdf
+    ON sdf.sender_domain_id = sd.id AND sdf.project_id = ai2.project_id
+) sub
+WHERE sub.id = ai.id
   AND ai.drive_folder_id IS NULL;
