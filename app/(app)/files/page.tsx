@@ -1,15 +1,27 @@
 'use client';
 
-import { useMemo, useRef, useState, type DragEvent } from 'react';
+import { useMemo, useRef, useState, type DragEvent, type FormEvent } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { ArrowLeft, Folder, FileText, ExternalLink, ChevronRight, RefreshCw, X, Trash2, Mail, Upload, Tag as TagIcon } from 'lucide-react';
+import {
+  ArrowLeft,
+  Folder,
+  FileText,
+  ExternalLink,
+  ChevronRight,
+  RefreshCw,
+  X,
+  Trash2,
+  Mail,
+  Upload,
+  Tag as TagIcon,
+  Search,
+  Sparkles,
+} from 'lucide-react';
 import { PageHeader, EmptyState } from '@/components/layout/page-header';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
-import { Label } from '@/components/ui/label';
 import { Badge } from '@/components/ui/badge';
 import { Table, THead, TBody, TR, TH, TD } from '@/components/ui/table';
-import { SearchBar } from '@/components/summaries/search-bar';
 import { MoveToFolder } from '@/components/shared/move-to-folder';
 import { UploadProgressPanel, type UploadTask } from '@/components/files/upload-progress-panel';
 import { ArchiveDetailPanel } from '@/components/archive/archive-detail-panel';
@@ -93,12 +105,17 @@ export default function FilesPage() {
   // breadcrumb it returns never includes anything above the root either.
   const [folderId, setFolderId] = useState<string | null>(null);
   const [selectedTagIds, setSelectedTagIds] = useState<string[]>([]);
-  const [tagQuery, setTagQuery] = useState('');
-  // Tags the AI found related in meaning to tagQuery (synonyms, translations,
-  // associated concepts) — not substring matches, which tagSearchResults
-  // already covers client-side. Debounced via a plain timer ref (rather
-  // than a useEffect keyed on tagQuery) so typing doesn't fire a request
-  // per keystroke.
+  // One search box drives filename, tag and free-style ("ask") search alike:
+  // typing shows a dropdown of matching/AI-related tags to click straight
+  // into an exact tag filter, while submitting runs the AI "ask" parse
+  // (project/tag/sender/date/text — including file names, now that the
+  // search endpoint also matches attachment filenames).
+  const [searchQuery, setSearchQuery] = useState('');
+  // Tags the AI found related in meaning to searchQuery (synonyms,
+  // translations, associated concepts) — not substring matches, which
+  // tagSearchResults already covers client-side. Debounced via a plain
+  // timer ref (rather than a useEffect keyed on searchQuery) so typing
+  // doesn't fire a request per keystroke.
   const [aiTagSuggestions, setAiTagSuggestions] = useState<{ id: string; name: string }[]>([]);
   const aiTagSearchTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [syncing, setSyncing] = useState(false);
@@ -106,7 +123,6 @@ export default function FilesPage() {
   const [askResult, setAskResult] = useState<{ results: ArchiveAttachmentSearchResult[]; interpreted: ParsedArchiveQuery } | null>(null);
   const [asking, setAsking] = useState(false);
   const [askError, setAskError] = useState<string | null>(null);
-  const [searchNonce, setSearchNonce] = useState(0);
   const [isDragging, setIsDragging] = useState(false);
   const [uploadTasks, setUploadTasks] = useState<UploadTask[]>([]);
   const [deletingFileId, setDeletingFileId] = useState<string | null>(null);
@@ -131,10 +147,12 @@ export default function FilesPage() {
     setSelected(null);
   };
 
-  const clearAskResult = () => {
+  const clearSearch = () => {
+    setSelectedTagIds([]);
     setAskResult(null);
     setAskError(null);
-    setSearchNonce((n) => n + 1);
+    setSearchQuery('');
+    setAiTagSuggestions([]);
   };
 
   const { data: archiveTags } = useArchiveTags();
@@ -147,19 +165,18 @@ export default function FilesPage() {
   const resultsLoading = selectedTagIds.length > 0 ? tagResultsLoading : asking;
 
   const selectedTags = useMemo(() => (archiveTags ?? []).filter((t) => selectedTagIds.includes(t.id)), [archiveTags, selectedTagIds]);
-  const mostRecentUnselected = (archiveTags ?? []).find((t) => !selectedTagIds.includes(t.id));
   const tagSearchResults = useMemo(() => {
-    const q = tagQuery.trim().toLowerCase();
+    const q = searchQuery.trim().toLowerCase();
     if (!q) return [];
     return (archiveTags ?? []).filter((t) => !selectedTagIds.includes(t.id) && t.name.toLowerCase().includes(q)).slice(0, 8);
-  }, [archiveTags, selectedTagIds, tagQuery]);
+  }, [archiveTags, selectedTagIds, searchQuery]);
   const aiOnlySuggestions = useMemo(() => {
     const substringMatchIds = new Set(tagSearchResults.map((t) => t.id));
     return aiTagSuggestions.filter((t) => !substringMatchIds.has(t.id) && !selectedTagIds.includes(t.id));
   }, [aiTagSuggestions, tagSearchResults, selectedTagIds]);
 
-  const onTagQueryChange = (value: string) => {
-    setTagQuery(value);
+  const onSearchQueryChange = (value: string) => {
+    setSearchQuery(value);
     if (aiTagSearchTimer.current) clearTimeout(aiTagSearchTimer.current);
     const q = value.trim();
     if (!q) {
@@ -193,15 +210,17 @@ export default function FilesPage() {
 
   const addTag = (tagId: string) => {
     setSelectedTagIds((prev) => (prev.includes(tagId) ? prev : [...prev, tagId]));
-    setTagQuery('');
+    setSearchQuery('');
     setAiTagSuggestions([]);
     setAskResult(null);
+    setAskError(null);
   };
   const removeTag = (tagId: string) => setSelectedTagIds((prev) => prev.filter((id) => id !== tagId));
 
   const ask = async (question: string) => {
     setAsking(true);
     setAskError(null);
+    setAiTagSuggestions([]);
     try {
       const result = await api.post<{ results: ArchiveAttachmentSearchResult[]; interpreted: ParsedArchiveQuery }>('/api/archive/ask', {
         question,
@@ -213,6 +232,13 @@ export default function FilesPage() {
     } finally {
       setAsking(false);
     }
+  };
+
+  const submitSearch = (e: FormEvent) => {
+    e.preventDefault();
+    const q = searchQuery.trim();
+    if (!q) return;
+    void ask(q);
   };
 
   const syncNow = async () => {
@@ -325,10 +351,65 @@ export default function FilesPage() {
       {syncMessage && <p className="text-sm text-muted-foreground mb-3">{syncMessage}</p>}
       {deleteError && <p className="text-sm text-destructive mb-3">{deleteError}</p>}
 
-      {archiveTags && archiveTags.length > 0 && (
-        <div className="mb-4 space-y-1.5">
-          <Label>{t('files.filterByTag')}</Label>
-          <div className="flex flex-wrap items-center gap-1.5">
+      <div className="mb-4">
+        <div className="relative">
+          <form onSubmit={submitSearch} className="flex flex-col sm:flex-row gap-2">
+            <div className="relative flex-1">
+              <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" />
+              <Input
+                value={searchQuery}
+                onChange={(e) => onSearchQueryChange(e.target.value)}
+                placeholder={t('files.searchPlaceholder')}
+                className="pl-9"
+              />
+            </div>
+            <div className="flex gap-2">
+              <Button type="submit" disabled={asking || !searchQuery.trim()}>
+                <Sparkles size={16} className="mr-1" />
+                {t('common.search')}
+              </Button>
+              {showResults && (
+                <Button type="button" variant="ghost" onClick={clearSearch}>
+                  <ArrowLeft size={16} className="mr-1" /> {t('files.backToDrive')}
+                </Button>
+              )}
+            </div>
+          </form>
+          {!showResults && searchQuery.trim() && (tagSearchResults.length > 0 || aiOnlySuggestions.length > 0) && (
+            <div className="absolute z-10 mt-1 w-full sm:max-w-md rounded-md border bg-card shadow-md max-h-56 overflow-auto">
+              {tagSearchResults.map((tag) => (
+                <button
+                  key={tag.id}
+                  type="button"
+                  onClick={() => addTag(tag.id)}
+                  className="block w-full text-left px-3 py-1.5 text-xs hover:bg-accent"
+                >
+                  🏷 {tag.name}
+                </button>
+              ))}
+              {aiOnlySuggestions.length > 0 && (
+                <>
+                  <div className="px-3 pt-1.5 pb-1 text-[10px] font-medium uppercase tracking-wide text-muted-foreground border-t">
+                    {t('files.aiSuggestedTags')}
+                  </div>
+                  {aiOnlySuggestions.map((tag) => (
+                    <button
+                      key={tag.id}
+                      type="button"
+                      onClick={() => addTag(tag.id)}
+                      className="block w-full text-left px-3 py-1.5 text-xs hover:bg-accent"
+                    >
+                      🏷 {tag.name}
+                    </button>
+                  ))}
+                </>
+              )}
+            </div>
+          )}
+        </div>
+
+        {selectedTags.length > 0 && (
+          <div className="flex flex-wrap items-center gap-1.5 mt-2">
             {selectedTags.map((tag) => (
               <button
                 key={tag.id}
@@ -339,75 +420,9 @@ export default function FilesPage() {
                 {tag.name} <X size={12} />
               </button>
             ))}
-            {mostRecentUnselected && (
-              <button
-                type="button"
-                onClick={() => addTag(mostRecentUnselected.id)}
-                className="rounded-full border px-2.5 py-1 text-xs hover:bg-accent"
-                title={t('files.mostRecentTag')}
-              >
-                + {mostRecentUnselected.name}
-              </button>
-            )}
-            {selectedTagIds.length > 0 && (
-              <Button type="button" variant="ghost" size="sm" onClick={() => setSelectedTagIds([])}>
-                {t('common.clearFilters')}
-              </Button>
-            )}
           </div>
-          <div className="relative max-w-xs">
-            <Input
-              value={tagQuery}
-              onChange={(e) => onTagQueryChange(e.target.value)}
-              placeholder={t('files.searchTagsPlaceholder')}
-              className="h-8 text-xs"
-            />
-            {(tagSearchResults.length > 0 || aiOnlySuggestions.length > 0) && (
-              <div className="absolute z-10 mt-1 w-full rounded-md border bg-card shadow-md max-h-56 overflow-auto">
-                {tagSearchResults.map((tag) => (
-                  <button
-                    key={tag.id}
-                    type="button"
-                    onClick={() => addTag(tag.id)}
-                    className="block w-full text-left px-3 py-1.5 text-xs hover:bg-accent"
-                  >
-                    {tag.name}
-                  </button>
-                ))}
-                {aiOnlySuggestions.length > 0 && (
-                  <>
-                    <div className="px-3 pt-1.5 pb-1 text-[10px] font-medium uppercase tracking-wide text-muted-foreground border-t">
-                      {t('files.aiSuggestedTags')}
-                    </div>
-                    {aiOnlySuggestions.map((tag) => (
-                      <button
-                        key={tag.id}
-                        type="button"
-                        onClick={() => addTag(tag.id)}
-                        className="block w-full text-left px-3 py-1.5 text-xs hover:bg-accent"
-                      >
-                        {tag.name}
-                      </button>
-                    ))}
-                  </>
-                )}
-              </div>
-            )}
-          </div>
-        </div>
-      )}
-
-      <div className="mb-4">
-        {askResult && (
-          <button
-            type="button"
-            onClick={clearAskResult}
-            className="mb-2 inline-flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground"
-          >
-            <ArrowLeft size={16} /> {t('files.backToDrive')}
-          </button>
         )}
-        <SearchBar key={searchNonce} busy={asking} onSearch={ask} showAskButton={false} placeholder={t('files.searchPlaceholder')} />
+
         {askResult && (
           <div className="flex items-center gap-3 flex-wrap text-sm mt-2">
             <span className="text-muted-foreground flex flex-wrap items-center gap-1">

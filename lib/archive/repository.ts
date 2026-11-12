@@ -217,7 +217,11 @@ export async function searchArchiveAttachments(filters: ArchiveSearchFilters): P
   }
   if (filters.textQuery?.trim()) {
     const q = filters.textQuery.trim().replace(/[%_]/g, '\\$&');
-    builder = builder.or(`title.ilike.%${q}%,subject.ilike.%${q}%,body_text.ilike.%${q}%`);
+    const { data: filenameMatches } = await supabaseAdmin.from('archive_attachments').select('archived_item_id').ilike('filename', `%${q}%`);
+    const filenameItemIds = Array.from(new Set((filenameMatches ?? []).map((a) => a.archived_item_id as string)));
+    const orClauses = [`title.ilike.%${q}%`, `subject.ilike.%${q}%`, `body_text.ilike.%${q}%`];
+    if (filenameItemIds.length > 0) orClauses.push(`id.in.(${filenameItemIds.join(',')})`);
+    builder = builder.or(orClauses.join(','));
   }
   if (filters.dateFrom) builder = builder.gte('email_received_at', filters.dateFrom);
   if (filters.dateTo) builder = builder.lte('email_received_at', `${filters.dateTo}T23:59:59`);
