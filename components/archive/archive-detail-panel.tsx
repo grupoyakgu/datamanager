@@ -3,7 +3,6 @@
 import { useState } from 'react';
 import Link from 'next/link';
 import { X, Paperclip, ExternalLink } from 'lucide-react';
-import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Label } from '@/components/ui/label';
 import { formatDate } from '@/components/summaries/summary-card';
@@ -144,8 +143,7 @@ export function ArchiveDetailPanel({ itemId, onClose }: ArchiveDetailPanelProps)
                 item.ai_metadata.topic ||
                 item.ai_metadata.people.length > 0 ||
                 item.ai_metadata.companies.length > 0 ||
-                item.ai_metadata.documentDate ||
-                item.ai_metadata.keywords.length > 0) && (
+                item.ai_metadata.documentDate) && (
                 <div className="pt-2 border-t border-border space-y-1">
                   <span className="text-muted-foreground" title={t('archive.aiMetadataHint')}>
                     {t('archive.aiMetadata')}
@@ -158,15 +156,6 @@ export function ArchiveDetailPanel({ itemId, onClose }: ArchiveDetailPanelProps)
                   )}
                   {item.ai_metadata.documentDate && (
                     <Row label={t('archive.documentDate')} value={formatDate(item.ai_metadata.documentDate) ?? item.ai_metadata.documentDate} />
-                  )}
-                  {item.ai_metadata.keywords.length > 0 && (
-                    <div className="flex flex-wrap gap-1 pt-1">
-                      {item.ai_metadata.keywords.map((k) => (
-                        <Badge key={k} variant="outline" className="text-[11px]">
-                          {k}
-                        </Badge>
-                      ))}
-                    </div>
                   )}
                 </div>
               )}

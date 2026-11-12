@@ -237,6 +237,20 @@ export async function ingestArchiveMessage(
       },
       { onConflict: 'archived_item_id' }
     );
+    // Keywords extracted from the email's own content become ordinary tags
+    // too, alongside the sender's "tags:" line — shown together in the one
+    // Tags section rather than buried in a separate metadata-only list.
+    if (ai.keywords.length > 0) {
+      const keywordTagIds = (await findOrCreateTagsByName(ai.keywords)).map((t) => t.id);
+      if (keywordTagIds.length > 0) {
+        await supabaseAdmin
+          .from('archive_item_tags')
+          .upsert(
+            keywordTagIds.map((tagId) => ({ archived_item_id: archivedItemId, tag_id: tagId })),
+            { onConflict: 'archived_item_id,tag_id', ignoreDuplicates: true }
+          );
+      }
+    }
   } catch (aiError) {
     console.error('AI metadata extraction failed for archived item', archivedItemId, aiError);
   }
