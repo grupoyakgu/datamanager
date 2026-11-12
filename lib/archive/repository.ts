@@ -127,16 +127,54 @@ export async function getArchiveItemById(id: string): Promise<ArchiveItemView | 
 
 interface RawArchiveAttachmentSearchRow {
   id: string;
+  source: 'gmail' | 'manual';
+  is_forward: boolean;
   original_sender_name: string | null;
   original_sender_email: string | null;
+  forwarded_by_name: string | null;
+  forwarded_by_email: string | null;
+  email_received_at: string | null;
   drive_folder_name: string | null;
-  project: { name: string } | { name: string }[] | null;
+  project: { name: string; drive_folder_id: string | null } | { name: string; drive_folder_id: string | null }[] | null;
   archive_attachments: { id: string; filename: string; mime_type: string; drive_file_id: string | null }[] | null;
   archive_item_tags: { tags: { id: string; name: string } | { id: string; name: string }[] | null }[] | null;
 }
 
 const ARCHIVE_SEARCH_ROW_SELECT =
-  'id, original_sender_name, original_sender_email, drive_folder_name, project:archive_projects ( name ), archive_attachments ( id, filename, mime_type, drive_file_id ), archive_item_tags ( tags ( id, name ) )';
+  'id, source, is_forward, original_sender_name, original_sender_email, forwarded_by_name, forwarded_by_email, email_received_at, drive_folder_name, project:archive_projects ( name, drive_folder_id ), archive_attachments ( id, filename, mime_type, drive_file_id ), archive_item_tags ( tags ( id, name ) )';
+
+/** Shared by every search path below — maps one archived_items row (with its attachments) to one result row per attachment, mirroring the fields the Files page's own folder-browsing table shows. */
+function toArchiveAttachmentSearchResults(row: RawArchiveAttachmentSearchRow): ArchiveAttachmentSearchResult[] {
+  const itemTags = (row.archive_item_tags ?? [])
+    .map((t) => (Array.isArray(t.tags) ? t.tags[0] ?? null : t.tags))
+    .filter((t): t is { id: string; name: string } => !!t)
+    .sort((a, b) => a.name.localeCompare(b.name));
+  const source = prettySenderName(row.original_sender_name, row.original_sender_email);
+  // Mirrors /api/drive/files's own uploadedBy logic: the team member who
+  // sent/forwarded it to the Archive mailbox, not the original outside
+  // sender on a forward.
+  const uploadedBy = row.is_forward
+    ? prettySenderName(row.forwarded_by_name, row.forwarded_by_email)
+    : prettySenderName(row.original_sender_name, row.original_sender_email);
+  const project = one(row.project);
+  const projectName = project?.name ?? null;
+  const driveFolderId = project?.drive_folder_id ?? null;
+  return (row.archive_attachments ?? []).map((attachment) => ({
+    id: attachment.id,
+    filename: attachment.filename,
+    mimeType: attachment.mime_type,
+    driveUrl: attachment.drive_file_id ? `https://drive.google.com/file/d/${attachment.drive_file_id}/view` : null,
+    driveFolderUrl: driveFolderId ? `https://drive.google.com/drive/folders/${driveFolderId}` : null,
+    itemId: row.id,
+    source,
+    uploadedBy,
+    ingestSource: row.source,
+    emailReceivedAt: row.email_received_at,
+    folderName: row.drive_folder_name,
+    projectName,
+    tags: itemTags,
+  }));
+}
 
 /** Every attachment belonging to an archived item tagged with at least one of the given tags. */
 export async function listArchiveAttachmentsByTags(tagIds: string[]): Promise<ArchiveAttachmentSearchResult[]> {
@@ -154,29 +192,7 @@ export async function listArchiveAttachmentsByTags(tagIds: string[]): Promise<Ar
     .order('email_received_at', { ascending: false, nullsFirst: false });
   if (error) throw new Error(error.message);
 
-  const results: ArchiveAttachmentSearchResult[] = [];
-  for (const row of (data ?? []) as unknown as RawArchiveAttachmentSearchRow[]) {
-    const itemTags = (row.archive_item_tags ?? [])
-      .map((t) => (Array.isArray(t.tags) ? t.tags[0] ?? null : t.tags))
-      .filter((t): t is { id: string; name: string } => !!t)
-      .sort((a, b) => a.name.localeCompare(b.name));
-    const source = prettySenderName(row.original_sender_name, row.original_sender_email);
-    const projectName = one(row.project)?.name ?? null;
-    for (const attachment of row.archive_attachments ?? []) {
-      results.push({
-        id: attachment.id,
-        filename: attachment.filename,
-        mimeType: attachment.mime_type,
-        driveUrl: attachment.drive_file_id ? `https://drive.google.com/file/d/${attachment.drive_file_id}/view` : null,
-        itemId: row.id,
-        source,
-        folderName: row.drive_folder_name,
-        projectName,
-        tags: itemTags,
-      });
-    }
-  }
-  return results;
+  return ((data ?? []) as unknown as RawArchiveAttachmentSearchRow[]).flatMap(toArchiveAttachmentSearchResults);
 }
 
 export interface ArchiveSearchFilters {
@@ -229,29 +245,7 @@ export async function searchArchiveAttachments(filters: ArchiveSearchFilters): P
   const { data, error } = await builder.order('email_received_at', { ascending: false, nullsFirst: false }).limit(100);
   if (error) throw new Error(error.message);
 
-  const results: ArchiveAttachmentSearchResult[] = [];
-  for (const row of (data ?? []) as unknown as RawArchiveAttachmentSearchRow[]) {
-    const itemTags = (row.archive_item_tags ?? [])
-      .map((t) => (Array.isArray(t.tags) ? t.tags[0] ?? null : t.tags))
-      .filter((t): t is { id: string; name: string } => !!t)
-      .sort((a, b) => a.name.localeCompare(b.name));
-    const source = prettySenderName(row.original_sender_name, row.original_sender_email);
-    const projectName = one(row.project)?.name ?? null;
-    for (const attachment of row.archive_attachments ?? []) {
-      results.push({
-        id: attachment.id,
-        filename: attachment.filename,
-        mimeType: attachment.mime_type,
-        driveUrl: attachment.drive_file_id ? `https://drive.google.com/file/d/${attachment.drive_file_id}/view` : null,
-        itemId: row.id,
-        source,
-        folderName: row.drive_folder_name,
-        projectName,
-        tags: itemTags,
-      });
-    }
-  }
-  return results;
+  return ((data ?? []) as unknown as RawArchiveAttachmentSearchRow[]).flatMap(toArchiveAttachmentSearchResults);
 }
 
 /** Every tag actually used by at least one archived item, most-recently-used first. */

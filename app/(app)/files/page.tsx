@@ -317,7 +317,7 @@ export default function FilesPage() {
     }
   };
 
-  const handleDeleteFile = async (file: DriveFileWithSource) => {
+  const handleDeleteFile = async (file: { id: string; archivedItemId: string | null }) => {
     if (!confirm(t('files.confirmDeleteFile'))) return;
     setDeleteError(null);
     setDeletingFileId(file.id);
@@ -334,6 +334,15 @@ export default function FilesPage() {
     } finally {
       setDeletingFileId(null);
     }
+  };
+
+  // Search results aren't backed by the 'drive' query, and an "ask" result
+  // isn't backed by any react-query cache at all — invalidateArchive()
+  // refreshes the tag-click path, but a free-text ask needs its deleted row
+  // removed from local state directly so it disappears without a new AI call.
+  const handleDeleteAttachment = async (attachment: ArchiveAttachmentSearchResult) => {
+    await handleDeleteFile({ id: attachment.id, archivedItemId: attachment.itemId });
+    setAskResult((prev) => (prev ? { ...prev, results: prev.results.filter((r) => r.id !== attachment.id) } : prev));
   };
 
   return (
@@ -446,59 +455,133 @@ export default function FilesPage() {
       </div>
 
       {showResults ? (
-        resultsLoading ? (
-          <p className="text-muted-foreground">{t('common.loading')}</p>
-        ) : !activeResults || activeResults.length === 0 ? (
-          <EmptyState>{t('files.noTaggedFiles')}</EmptyState>
-        ) : (
-          <Table>
-            <THead>
-              <TR>
-                <TH>{t('common.name')}</TH>
-                <TH className="hidden md:table-cell">{t('files.fromItem')}</TH>
-                <TH className="hidden lg:table-cell">{t('files.folder')}</TH>
-                <TH className="hidden sm:table-cell">{t('summaries.tags')}</TH>
-                <TH />
-              </TR>
-            </THead>
-            <TBody>
-              {activeResults.map((attachment) => (
-                <TR key={attachment.id}>
-                  <TD>
-                    <span className="inline-flex items-center gap-2">
-                      <FileText size={16} className="text-muted-foreground" /> {attachment.filename}
-                    </span>
-                  </TD>
-                  <TD className="hidden md:table-cell text-muted-foreground truncate max-w-[16rem]">{attachment.source ?? '—'}</TD>
-                  <TD className="hidden lg:table-cell text-muted-foreground">{attachment.folderName ?? '—'}</TD>
-                  <TD className="hidden sm:table-cell text-muted-foreground">{attachment.tags.map((tag) => tag.name).join(', ')}</TD>
-                  <TD className="text-right">
-                    <div className="flex flex-col items-end gap-1">
-                      {attachment.driveUrl ? (
-                        <a
-                          href={attachment.driveUrl}
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          className="inline-flex items-center gap-1 text-sm text-primary hover:underline"
-                        >
-                          {t('files.openInDrive')} <ExternalLink size={14} />
-                        </a>
-                      ) : (
-                        <span className="text-xs text-muted-foreground">{t('files.notYetSynced')}</span>
-                      )}
-                      <MoveToFolder
-                        currentFolderName={attachment.folderName}
-                        options={folderOptions ?? []}
-                        busy={moveArchiveItem.isPending}
-                        onMove={(folderName) => moveArchiveItem.mutate({ id: attachment.itemId, folderName })}
-                      />
-                    </div>
-                  </TD>
-                </TR>
-              ))}
-            </TBody>
-          </Table>
-        )
+        <div className="flex flex-col gap-4 lg:flex-row lg:items-start">
+          <div className="min-w-0 flex-1">
+            {resultsLoading ? (
+              <p className="text-muted-foreground">{t('common.loading')}</p>
+            ) : !activeResults || activeResults.length === 0 ? (
+              <EmptyState>{t('files.noTaggedFiles')}</EmptyState>
+            ) : (
+              <Table>
+                <THead>
+                  <TR>
+                    <TH>{t('common.name')}</TH>
+                    <TH className="hidden md:table-cell">{t('files.type')}</TH>
+                    <TH className="hidden md:table-cell">{t('files.source')}</TH>
+                    <TH className="hidden lg:table-cell">{t('files.via')}</TH>
+                    <TH className="hidden lg:table-cell">{t('files.uploadedBy')}</TH>
+                    <TH className="hidden sm:table-cell">{t('files.modified')}</TH>
+                    <TH className="hidden lg:table-cell">{t('files.folder')}</TH>
+                    <TH className="hidden sm:table-cell">{t('summaries.tags')}</TH>
+                    <TH />
+                  </TR>
+                </THead>
+                <TBody>
+                  {activeResults.map((attachment) => {
+                    const isSelected = attachment.id === selected?.fileId;
+                    return (
+                      <TR
+                        key={attachment.id}
+                        className={cn(isSelected && 'bg-primary/20 hover:bg-primary/25')}
+                        style={{ borderLeft: isSelected ? '4px solid var(--primary)' : '4px solid transparent' }}
+                      >
+                        <TD>
+                          {attachment.driveUrl ? (
+                            <a
+                              href={attachment.driveUrl}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="inline-flex items-center gap-2 hover:underline"
+                            >
+                              <FileText size={16} className="text-muted-foreground" /> {attachment.filename}
+                            </a>
+                          ) : (
+                            <span className="inline-flex items-center gap-2">
+                              <FileText size={16} className="text-muted-foreground" /> {attachment.filename}
+                            </span>
+                          )}
+                        </TD>
+                        <TD className="hidden md:table-cell text-muted-foreground">
+                          {fileTypeLabel({ mimeType: attachment.mimeType, name: attachment.filename })}
+                        </TD>
+                        <TD className="hidden md:table-cell text-muted-foreground truncate max-w-[16rem]">{attachment.source ?? '—'}</TD>
+                        <TD className="hidden lg:table-cell text-muted-foreground">
+                          {attachment.ingestSource === 'gmail' ? (
+                            <span className="inline-flex items-center gap-1" title={t('files.viaEmail')}>
+                              <Mail size={14} />
+                            </span>
+                          ) : attachment.ingestSource === 'manual' ? (
+                            <span className="inline-flex items-center gap-1" title={t('files.viaUpload')}>
+                              <Upload size={14} />
+                            </span>
+                          ) : (
+                            '—'
+                          )}
+                        </TD>
+                        <TD className="hidden lg:table-cell text-muted-foreground">{attachment.uploadedBy ?? '—'}</TD>
+                        <TD className="hidden sm:table-cell text-muted-foreground">
+                          {attachment.emailReceivedAt ? new Date(attachment.emailReceivedAt).toLocaleDateString() : '—'}
+                        </TD>
+                        <TD className="hidden lg:table-cell text-muted-foreground">{attachment.folderName ?? '—'}</TD>
+                        <TD className="hidden sm:table-cell text-muted-foreground">{attachment.tags.map((tag) => tag.name).join(', ')}</TD>
+                        <TD className="text-right">
+                          <div className="flex items-center justify-end gap-1">
+                            {attachment.driveFolderUrl && (
+                              <a
+                                href={attachment.driveFolderUrl}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                title={t('files.openInDrive')}
+                                aria-label={t('files.openInDrive')}
+                                className="inline-flex h-9 w-9 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-accent hover:text-accent-foreground"
+                              >
+                                <ExternalLink size={14} />
+                              </a>
+                            )}
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              title={t('files.metadataTags')}
+                              aria-label={t('files.metadataTags')}
+                              onClick={() => setSelected({ itemId: attachment.itemId, fileId: attachment.id })}
+                            >
+                              <TagIcon size={14} />
+                            </Button>
+                            <MoveToFolder
+                              iconOnly
+                              currentFolderName={attachment.folderName}
+                              options={folderOptions ?? []}
+                              busy={moveArchiveItem.isPending}
+                              onMove={(folderName) => moveArchiveItem.mutate({ id: attachment.itemId, folderName })}
+                            />
+                            {user?.role === 'admin' && (
+                              <Button
+                                variant="ghost"
+                                size="sm"
+                                title={t('files.deleteFile')}
+                                aria-label={t('files.deleteFile')}
+                                className="text-destructive hover:text-destructive"
+                                disabled={deletingFileId === attachment.id}
+                                onClick={() => void handleDeleteAttachment(attachment)}
+                              >
+                                <Trash2 size={14} />
+                              </Button>
+                            )}
+                          </div>
+                        </TD>
+                      </TR>
+                    );
+                  })}
+                </TBody>
+              </Table>
+            )}
+          </div>
+          {selected && (
+            <div className="w-full lg:w-96 lg:shrink-0">
+              <ArchiveDetailPanel itemId={selected.itemId} onClose={() => setSelected(null)} />
+            </div>
+          )}
+        </div>
       ) : (
         <>
         <nav className="flex items-center flex-wrap gap-1 text-sm mb-4">

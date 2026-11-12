@@ -251,9 +251,17 @@ export interface ArchiveAttachmentSearchResult {
   filename: string;
   mimeType: string;
   driveUrl: string | null;
+  /** The project's Drive folder — used for an "open containing folder" action, mirroring the Files page's own folder-browsing table. */
+  driveFolderUrl: string | null;
   itemId: string;
   /** Who the email was originally sent from (not the item's title/subject). */
   source: string | null;
+  /** The team member who sent/forwarded it to the Archive mailbox (not the original outside sender on a forward). */
+  uploadedBy: string | null;
+  /** How the file entered the archive — 'gmail' (ingested from an email) or 'manual' (drag-and-dropped). */
+  ingestSource: 'gmail' | 'manual' | null;
+  /** The original email's own send date (never the Drive-upload time). */
+  emailReceivedAt: string | null;
   /** The Drive folder its attachments were organized into. */
   folderName: string | null;
   /** The project it's filed under, or null if still unassigned (flagged for review). */
