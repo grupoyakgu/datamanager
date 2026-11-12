@@ -490,13 +490,16 @@ export default function FilesPage() {
                               href={attachment.driveUrl}
                               target="_blank"
                               rel="noopener noreferrer"
-                              className="inline-flex items-center gap-2 hover:underline"
+                              title={attachment.filename}
+                              className="inline-flex items-center gap-2 hover:underline min-w-0"
                             >
-                              <FileText size={16} className="text-muted-foreground" /> {attachment.filename}
+                              <FileText size={16} className="text-muted-foreground shrink-0" />
+                              <span className="truncate max-w-[220px]">{attachment.filename}</span>
                             </a>
                           ) : (
-                            <span className="inline-flex items-center gap-2">
-                              <FileText size={16} className="text-muted-foreground" /> {attachment.filename}
+                            <span className="inline-flex items-center gap-2 min-w-0" title={attachment.filename}>
+                              <FileText size={16} className="text-muted-foreground shrink-0" />
+                              <span className="truncate max-w-[220px]">{attachment.filename}</span>
                             </span>
                           )}
                         </TD>
@@ -661,23 +664,28 @@ export default function FilesPage() {
                       {file.isFolder ? (
                         <button
                           type="button"
-                          className="inline-flex items-center gap-2 hover:underline text-left"
+                          title={file.name}
+                          className="inline-flex items-center gap-2 hover:underline text-left min-w-0"
                           onClick={() => navigateToFolder(file.id)}
                         >
-                          <Folder size={16} className="text-amber-500" /> {file.name}
+                          <Folder size={16} className="text-amber-500 shrink-0" />
+                          <span className="truncate max-w-[220px]">{file.name}</span>
                         </button>
                       ) : file.webViewLink ? (
                         <a
                           href={file.webViewLink}
                           target="_blank"
                           rel="noopener noreferrer"
-                          className="inline-flex items-center gap-2 hover:underline"
+                          title={file.name}
+                          className="inline-flex items-center gap-2 hover:underline min-w-0"
                         >
-                          <FileText size={16} className="text-muted-foreground" /> {file.name}
+                          <FileText size={16} className="text-muted-foreground shrink-0" />
+                          <span className="truncate max-w-[220px]">{file.name}</span>
                         </a>
                       ) : (
-                        <span className="inline-flex items-center gap-2">
-                          <FileText size={16} className="text-muted-foreground" /> {file.name}
+                        <span className="inline-flex items-center gap-2 min-w-0" title={file.name}>
+                          <FileText size={16} className="text-muted-foreground shrink-0" />
+                          <span className="truncate max-w-[220px]">{file.name}</span>
                         </span>
                       )}
                     </TD>
